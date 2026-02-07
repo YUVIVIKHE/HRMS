@@ -49,7 +49,7 @@ export function TableHead({ children, className, ...props }: React.HTMLAttribute
   )
 }
 
-export function TableCell({ children, className, ...props }: React.HTMLAttributes<HTMLTableCellElement>) {
+export function TableCell({ children, className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td className={cn('px-4 py-3 text-sm text-gray-900', className)} {...props}>
       {children}

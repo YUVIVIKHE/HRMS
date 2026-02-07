@@ -128,7 +128,7 @@ export default function DashboardContent() {
           {/* Attendance Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Today's Attendance</CardTitle>
+              <CardTitle>Today&apos;s Attendance</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -209,10 +209,10 @@ export default function DashboardContent() {
         <>
           {/* Employee Dashboard */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* Today's Attendance Card */}
+            {/* Today&apos;s Attendance Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Today's Attendance</CardTitle>
+                <CardTitle>Today&apos;s Attendance</CardTitle>
               </CardHeader>
               <CardContent>
                 {mockAttendance.length > 0 ? (
@@ -248,7 +248,7 @@ export default function DashboardContent() {
                 ) : (
                   <div className="text-center py-8">
                     <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600 mb-4">You haven't clocked in today</p>
+                    <p className="text-gray-600 mb-4">You haven&apos;t clocked in today</p>
                     <Button>Clock In</Button>
                   </div>
                 )}

@@ -51,9 +51,20 @@ export function CardDescription({ children, className, ...props }: React.HTMLAtt
   )
 }
 
-export function CardContent({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+const contentPaddings = {
+  none: '',
+  sm: 'p-4',
+  md: 'p-6',
+  lg: 'p-8',
+}
+
+interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  padding?: 'none' | 'sm' | 'md' | 'lg'
+}
+
+export function CardContent({ children, className, padding = 'md', ...props }: CardContentProps) {
   return (
-    <div className={cn('', className)} {...props}>
+    <div className={cn(contentPaddings[padding], className)} {...props}>
       {children}
     </div>
   )
