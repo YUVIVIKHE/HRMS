@@ -1,0 +1,21 @@
+{
+  "name": "HRMS - Human Resource Management System",
+  "short_name": "HRMS",
+  "description": "Enterprise HRMS system for attendance, leave, and payroll management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "screenshots": []
+}
+
