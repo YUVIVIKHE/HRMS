@@ -178,11 +178,39 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
 
     <!-- Table -->
     <div class="table-wrap">
-      <div class="table-toolbar">
-        <h2>All Employees <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($employees) ?>)</span></h2>
-        <div class="search-box">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="empSearch" placeholder="Search employees…" oninput="filterTable()">
+      <div class="table-toolbar" style="flex-wrap:wrap;gap:10px;">
+        <h2>All Employees <span id="empCount" style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($employees) ?>)</span></h2>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;">
+          <!-- Search -->
+          <div class="search-box">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="empSearch" placeholder="Search…" oninput="filterTable()">
+          </div>
+          <!-- Department filter -->
+          <select id="filterDept" class="form-control" style="width:auto;min-width:160px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
+            <option value="">All Departments</option>
+            <?php foreach($deptList as $d): ?>
+              <option value="<?= htmlspecialchars($d['name']) ?>"><?= htmlspecialchars($d['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <!-- Type filter -->
+          <select id="filterType" class="form-control" style="width:auto;min-width:130px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
+            <option value="">All Types</option>
+            <option value="FTE">FTE</option>
+            <option value="External">External</option>
+          </select>
+          <!-- Status filter -->
+          <select id="filterStatus" class="form-control" style="width:auto;min-width:120px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="terminated">Terminated</option>
+          </select>
+          <!-- Clear -->
+          <button class="btn btn-ghost btn-sm" onclick="clearFilters()" id="clearBtn" style="display:none;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Clear
+          </button>
         </div>
       </div>
       <table id="empTable">
@@ -203,7 +231,9 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
           <?php else: foreach($employees as $emp):
             $fullName = htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']);
           ?>
-          <tr>
+          <tr data-dept="<?= htmlspecialchars($departments[$emp['department_id']] ?? '') ?>"
+              data-type="<?= htmlspecialchars($emp['employee_type'] ?? '') ?>"
+              data-status="<?= htmlspecialchars(strtolower($emp['status'] ?? '')) ?>">
             <td>
               <div class="td-user">
                 <div class="td-avatar"><?= strtoupper(substr($emp['first_name'],0,1)) ?></div>
@@ -269,12 +299,35 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
 </div>
 
 <script>
-// ── Search ──
 function filterTable() {
-  const q = document.getElementById('empSearch').value.toLowerCase();
-  document.querySelectorAll('#empTable tbody tr:not(.empty-row)').forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  const q      = document.getElementById('empSearch').value.toLowerCase();
+  const dept   = document.getElementById('filterDept').value;
+  const type   = document.getElementById('filterType').value;
+  const status = document.getElementById('filterStatus').value;
+  const rows   = document.querySelectorAll('#empTable tbody tr:not(.empty-row)');
+
+  let visible = 0;
+  rows.forEach(row => {
+    const matchText   = !q      || row.textContent.toLowerCase().includes(q);
+    const matchDept   = !dept   || row.dataset.dept   === dept;
+    const matchType   = !type   || row.dataset.type   === type;
+    const matchStatus = !status || row.dataset.status === status.toLowerCase();
+    const show = matchText && matchDept && matchType && matchStatus;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
+
+  document.getElementById('empCount').textContent = '(' + visible + ')';
+  document.getElementById('clearBtn').style.display =
+    (q || dept || type || status) ? 'inline-flex' : 'none';
+}
+
+function clearFilters() {
+  document.getElementById('empSearch').value  = '';
+  document.getElementById('filterDept').value = '';
+  document.getElementById('filterType').value = '';
+  document.getElementById('filterStatus').value = '';
+  filterTable();
 }
 
 // ── Delete Modal ──

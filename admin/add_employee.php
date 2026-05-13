@@ -12,6 +12,10 @@ unset($_SESSION['flash_success'], $_SESSION['flash_error'], $_SESSION['flash_war
 $stmt = $db->query("SHOW COLUMNS FROM employees");
 $allColumns = $stmt->fetchAll(PDO::FETCH_COLUMN);
 $deptList = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+
+// Preview next employee_id for the form
+$lastId     = $db->query("SELECT MAX(CAST(SUBSTRING(employee_id, 4) AS UNSIGNED)) FROM employees WHERE employee_id REGEXP '^EMP[0-9]+'")->fetchColumn();
+$autoEmpId  = 'EMP' . str_pad((int)$lastId + 1, 4, '0', STR_PAD_LEFT);
 $baseColumns = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
 $customColumns = array_diff($allColumns, $baseColumns);
 
@@ -19,9 +23,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save_employee') {
         try {
+            // Auto-generate employee_id: EMP + zero-padded next number
+            $lastId = $db->query("SELECT MAX(CAST(SUBSTRING(employee_id, 4) AS UNSIGNED)) FROM employees WHERE employee_id REGEXP '^EMP[0-9]+'")
+                         ->fetchColumn();
+            $nextNum    = (int)$lastId + 1;
+            $autoEmpId  = 'EMP' . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+
             $insertCols = []; $placeholders = []; $params = [];
             foreach ($allColumns as $col) {
                 if ($col === 'id' || $col === 'created_at') continue;
+                if ($col === 'employee_id') {
+                    // Use auto-generated value, ignore any form input
+                    $insertCols[] = "`employee_id`"; $placeholders[] = "?";
+                    $params[] = $autoEmpId;
+                    continue;
+                }
                 if (isset($_POST[$col])) {
                     $insertCols[] = "`$col`"; $placeholders[] = "?";
                     $val = trim($_POST[$col]);
@@ -33,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!empty($insertCols)) {
                 $db->prepare("INSERT INTO employees (".implode(',',$insertCols).") VALUES (".implode(',',$placeholders).")")->execute($params);
-                $_SESSION['flash_success'] = "Employee added successfully.";
+                $_SESSION['flash_success'] = "Employee added successfully. Employee ID: $autoEmpId";
                 header("Location: employees.php"); exit;
             }
         } catch (PDOException $e) {
@@ -122,6 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if ($colMap === null) {
                                 $colMap = [];
                                 foreach ($allColumns as $c) $colMap[strtolower($c)] = $c;
+                            }
+
+                            // Auto-generate employee_id if blank
+                            if (empty($row['employee_id'])) {
+                                $lastId = $db->query("SELECT MAX(CAST(SUBSTRING(employee_id, 4) AS UNSIGNED)) FROM employees WHERE employee_id REGEXP '^EMP[0-9]+'")->fetchColumn();
+                                $row['employee_id'] = 'EMP' . str_pad((int)$lastId + $successCount + 1, 4, '0', STR_PAD_LEFT);
                             }
 
                             $ic = []; $ph = []; $pr = [];
@@ -275,7 +297,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="card-header"><div><h2>Employment Details</h2></div></div>
         <div class="card-body">
           <div class="form-grid">
-            <div class="form-group"><label>Employee ID</label><input type="text" name="employee_id" class="form-control"></div>
+            <div class="form-group"><label>Employee ID</label>
+              <input type="text" name="employee_id" class="form-control" value="<?= htmlspecialchars($autoEmpId ?? '') ?>" readonly style="background:var(--surface-2);color:var(--muted);cursor:not-allowed;">
+              <span style="font-size:11.5px;color:var(--muted-light);margin-top:3px;">Auto-generated on save</span>
+            </div>
             <div class="form-group"><label>User Code</label><input type="text" name="user_code" class="form-control"></div>
             <div class="form-group"><label>Job Title</label><input type="text" name="job_title" class="form-control"></div>
             <div class="form-group"><label>Department</label>

@@ -175,7 +175,10 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
         <div class="card-header"><div><h2>Employment Details</h2></div></div>
         <div class="card-body">
           <div class="form-grid">
-            <div class="form-group"><label>Employee ID</label><input type="text" name="employee_id" class="form-control" value="<?= val($emp,'employee_id') ?>"></div>
+            <div class="form-group"><label>Employee ID</label>
+              <input type="text" class="form-control" value="<?= val($emp,'employee_id') ?>" readonly style="background:var(--surface-2);color:var(--muted);cursor:not-allowed;">
+              <span style="font-size:11.5px;color:var(--muted-light);margin-top:3px;">Auto-generated, cannot be changed</span>
+            </div>
             <div class="form-group"><label>User Code</label><input type="text" name="user_code" class="form-control" value="<?= val($emp,'user_code') ?>"></div>
             <div class="form-group"><label>Job Title</label><input type="text" name="job_title" class="form-control" value="<?= val($emp,'job_title') ?>"></div>
             <div class="form-group"><label>Department</label>
