@@ -35,29 +35,7 @@ $employees = $db->query("SELECT id, CONCAT(first_name, ' ', last_name) AS name, 
 <link rel="stylesheet" href="style.css">
 <style>
 
-.header-card {
-    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
-    color: white;
-    padding: 32px 40px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.header-bg {
-    position: absolute;
-    right: -100px;
-    top: -100px;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
-    border-radius: 50%;
-    z-index: 1;
-}
+
 
 .stats-grid {
     display: grid;

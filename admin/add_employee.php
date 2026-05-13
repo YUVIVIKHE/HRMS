@@ -223,8 +223,8 @@ select.form-control { cursor: pointer; }
 <?php include __DIR__ . '/sidebar.php'; ?>
 
 <div class="main">
-    <div class="header-card" style="margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; background: linear-gradient(135deg, #1d4ed8, #3b82f6); color: white; padding: 32px 40px; position: relative; overflow: hidden;">
-        <div class="header-bg" style="position: absolute; right: -100px; top: -100px; width: 400px; height: 400px; background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%); border-radius: 50%; z-index: 1;"></div>
+    <div class="header-card" style="margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0;">
+        <div class="header-bg"></div>
         <div style="position:relative; z-index:2; max-width: 700px;">
             <div style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; opacity:0.8; margin-bottom:8px; text-transform:uppercase;">EMPLOYEE ONBOARDING</div>
             <h1 style="font-size:2.2rem; font-weight:800; margin-bottom:12px; letter-spacing:-0.5px;">Add New Employee</h1>

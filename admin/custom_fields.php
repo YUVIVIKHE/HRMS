@@ -111,58 +111,7 @@ foreach ($allColumnsFull as $col) {
 <link rel="stylesheet" href="style.css">
 <style>
 
-.header-card {
-    background: linear-gradient(135deg, #3730a3, #4f46e5);
-    color: white;
-    padding: 32px 40px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 10px 15px -3px rgba(55, 48, 163, 0.2);
-}
-.header-bg {
-    position: absolute;
-    right: -100px;
-    top: -100px;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%);
-    border-radius: 50%;
-    z-index: 1;
-}
 
-.card {
-    background: var(--surface);
-    border-radius: 12px;
-    padding: 32px;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    border: 1px solid var(--border);
-    margin-bottom: 24px;
-}
-
-.form-group { display: flex; flex-direction: column; gap: 8px; }
-.form-group label { font-size: 0.85rem; font-weight: 700; color: var(--text); }
-.form-control {
-    padding: 12px 16px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-family: inherit;
-    background: #ffffff;
-    transition: all 0.2s;
-    width: 100%;
-}
-.form-control:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(55, 48, 163, 0.1); }
-select.form-control { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 40px; }
-
-.btn { padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
-.btn-primary { background: var(--accent); color: white; }
-.btn-primary:hover { background: #312e81; }
-
-.alert { padding: 16px; border-radius: 8px; margin-bottom: 24px; font-weight: 500; font-size: 0.95rem; }
-.alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
 table { width: 100%; border-collapse: collapse; margin-top: 16px; }
 th { text-align: left; padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border-bottom: 1px solid var(--border); }
