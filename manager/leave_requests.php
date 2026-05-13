@@ -10,15 +10,25 @@ $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // ── Auto-escalate: mark pending >3 days as escalated ────────
-$db->prepare("
-    UPDATE leave_applications la
-    JOIN users u ON la.user_id = u.id
-    SET la.escalated = 1, la.escalated_at = NOW()
-    WHERE u.manager_id = ?
-      AND la.status = 'pending'
-      AND la.escalated = 0
-      AND DATEDIFF(NOW(), la.created_at) >= 3
-")->execute([$uid]);
+// Find this manager's department via their employee record
+$managerEmp = $db->prepare("SELECT e.department_id FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
+$managerEmp->execute([$uid]);
+$managerDeptId = $managerEmp->fetchColumn();
+
+// Escalate pending leaves from employees in same department
+if ($managerDeptId) {
+    $db->prepare("
+        UPDATE leave_applications la
+        JOIN users u ON la.user_id = u.id
+        JOIN employees e ON e.email = u.email
+        SET la.escalated = 1, la.escalated_at = NOW()
+        WHERE e.department_id = ?
+          AND u.id != ?
+          AND la.status = 'pending'
+          AND la.escalated = 0
+          AND DATEDIFF(NOW(), la.created_at) >= 3
+    ")->execute([$managerDeptId, $uid]);
+}
 
 // ── POST handlers ────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -27,13 +37,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $note   = trim($_POST['review_note'] ?? '');
 
     if (in_array($action, ['approve_leave','reject_leave']) && $appId) {
-        // Verify this leave belongs to one of this manager's employees
+        // Verify this leave belongs to an employee in this manager's department
         $app = $db->prepare("
-            SELECT la.*, u.manager_id FROM leave_applications la
+            SELECT la.* FROM leave_applications la
             JOIN users u ON la.user_id = u.id
-            WHERE la.id = ? AND u.manager_id = ? AND la.status = 'pending'
+            WHERE la.id = ? AND la.status = 'pending'
+              AND (
+                u.manager_id = ?
+                OR EXISTS (
+                    SELECT 1 FROM employees e
+                    JOIN employees me ON me.department_id = e.department_id
+                    JOIN users mu ON mu.email = me.email
+                    WHERE e.email = u.email AND mu.id = ?
+                )
+              )
         ");
-        $app->execute([$appId, $uid]);
+        $app->execute([$appId, $uid, $uid]);
         $app = $app->fetch();
 
         if ($app) {
@@ -57,8 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Data ─────────────────────────────────────────────────────
 $filterStatus = $_GET['status'] ?? 'pending';
 
-$where  = ["u.manager_id = ?"];
-$params = [$uid];
+// Manager sees employees who either:
+// 1. Have users.manager_id pointing to this manager, OR
+// 2. Are in the same department as this manager (via employees table)
+$where  = ["(u.manager_id = ? OR EXISTS (SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))"];
+$params = [$uid, $managerDeptId ?: 0, $uid];
 if ($filterStatus && $filterStatus !== 'all') {
     $where[] = "la.status = ?";
     $params[] = $filterStatus;
@@ -78,15 +100,21 @@ $requests = $db->prepare("
 $requests->execute($params);
 $requests = $requests->fetchAll();
 
-$pendingCount   = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE u.manager_id=? AND la.status='pending'")->execute([$uid]) ? $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE u.manager_id=? AND la.status='pending'")->execute([$uid]) : 0;
-// Simpler count
+// Counts using same combined condition
 $counts = [];
 foreach (['pending','approved','rejected','cancelled'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE u.manager_id=? AND la.status=?");
-    $c->execute([$uid,$s]); $counts[$s] = (int)$c->fetchColumn();
+    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id
+        WHERE (u.manager_id=? OR EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))
+        AND la.status=?");
+    $c->execute([$uid, $managerDeptId ?: 0, $uid, $s]);
+    $counts[$s] = (int)$c->fetchColumn();
 }
-$escalatedCount = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE u.manager_id=? AND la.escalated=1 AND la.status='pending'");
-$escalatedCount->execute([$uid]); $escalatedCount = (int)$escalatedCount->fetchColumn();
+
+$escalatedStmt = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id
+    WHERE (u.manager_id=? OR EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))
+    AND la.escalated=1 AND la.status='pending'");
+$escalatedStmt->execute([$uid, $managerDeptId ?: 0, $uid]);
+$escalatedCount = (int)$escalatedStmt->fetchColumn();
 ?>
 <!DOCTYPE html>
 <html lang="en">

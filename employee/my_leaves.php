@@ -36,10 +36,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_l
         $bal->execute([$uid, $typeId]); $bal = $bal->fetchColumn();
         if ($bal === false || $bal < $days) $errors[] = "Insufficient balance. Available: ".($bal ?: 0)." day(s), Requested: $days day(s).";
 
-        // Check overlap
-        $overlap = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND leave_type_id=? AND status NOT IN ('rejected','cancelled') AND from_date<=? AND to_date>=?");
-        $overlap->execute([$uid,$typeId,$to,$from]);
-        if ($overlap->fetch()) $errors[] = 'You already have a leave application overlapping these dates.';
+        // Check overlap — any leave type, excluding rejected/cancelled
+        $overlap = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND status NOT IN ('rejected','cancelled') AND from_date<=? AND to_date>=?");
+        $overlap->execute([$uid, $to, $from]);
+        if ($overlap->fetch()) $errors[] = 'You already have an active leave application overlapping these dates.';
     }
 
     if (empty($errors)) {

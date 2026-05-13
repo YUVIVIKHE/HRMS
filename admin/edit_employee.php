@@ -122,6 +122,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $params[] = $id;
         $db->prepare("UPDATE employees SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+
+        // ── Sync users.manager_id when department changes ──────
+        // Find the new department_id from POST
+        $newDeptId = isset($_POST['department_id']) && $_POST['department_id'] !== '' ? (int)$_POST['department_id'] : null;
+        if ($newDeptId) {
+            // Get this employee's user account email
+            $empEmail = $db->prepare("SELECT email FROM employees WHERE id=?");
+            $empEmail->execute([$id]); $empEmail = $empEmail->fetchColumn();
+
+            if ($empEmail) {
+                // Find the manager of the new department (user with role=manager in that dept)
+                $deptManager = $db->prepare("
+                    SELECT u.id FROM users u
+                    JOIN employees e ON e.email = u.email
+                    WHERE e.department_id = ? AND u.role = 'manager'
+                    LIMIT 1
+                ");
+                $deptManager->execute([$newDeptId]);
+                $newManagerId = $deptManager->fetchColumn();
+
+                // Update users.manager_id for this employee
+                $db->prepare("UPDATE users SET manager_id = ? WHERE email = ? AND role = 'employee'")
+                   ->execute([$newManagerId ?: null, $empEmail]);
+            }
+        }
+
         $_SESSION['flash_success'] = "Employee updated successfully.";
         header("Location: edit_employee.php?id=$id"); exit;
     } catch (PDOException $e) {

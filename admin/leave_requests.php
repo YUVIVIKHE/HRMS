@@ -45,11 +45,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Filters ──────────────────────────────────────────────────
+// Admin sees:
+//   - Manager's own leave requests (any status)
+//   - Employee leaves that have been escalated (pending 3+ days without manager action)
+//   - NOT regular pending employee leaves (those belong to the manager)
 $filterStatus = $_GET['status']  ?? 'pending';
 $filterRole   = $_GET['role']    ?? '';
 $filterEsc    = isset($_GET['escalated']);
 
-$where  = ["1=1"];
+$where  = ["(u.role = 'manager' OR la.escalated = 1)"];
 $params = [];
 
 if ($filterStatus && $filterStatus !== 'all') { $where[] = "la.status=?"; $params[] = $filterStatus; }
@@ -72,10 +76,10 @@ $requests = $db->prepare("
 $requests->execute($params);
 $requests = $requests->fetchAll();
 
-// Counts
+// Counts — same base condition as main query
 $counts = [];
 foreach (['pending','approved','rejected','cancelled'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications WHERE status=?");
+    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE (u.role='manager' OR la.escalated=1) AND la.status=?");
     $c->execute([$s]); $counts[$s] = (int)$c->fetchColumn();
 }
 $escalatedCount = (int)$db->query("SELECT COUNT(*) FROM leave_applications WHERE escalated=1 AND status='pending'")->fetchColumn();
@@ -97,7 +101,7 @@ $escalatedCount = (int)$db->query("SELECT COUNT(*) FROM leave_applications WHERE
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">Leave Requests</span>
-      <span class="page-breadcrumb">All employee &amp; manager leave applications</span>
+      <span class="page-breadcrumb">Manager leave requests &amp; escalated employee leaves</span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Admin</span>
@@ -126,7 +130,7 @@ $escalatedCount = (int)$db->query("SELECT COUNT(*) FROM leave_applications WHERE
     <div class="page-header">
       <div class="page-header-text">
         <h1>Leave Requests</h1>
-        <p>Manage all leave applications. Escalated requests (pending 3+ days) are highlighted.</p>
+        <p>Manager leave requests and employee leaves escalated after 3 days of no manager action.</p>
       </div>
     </div>
 
