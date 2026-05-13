@@ -36,6 +36,7 @@ nav a svg{width:20px;height:20px;flex-shrink:0}
 .s-foot{padding:24px 28px;border-top:1px solid var(--border)}
 .s-foot a{display:flex;align-items:center;justify-content:center;gap:10px;color:#ef4444;font-size:.9rem;font-weight:600;text-decoration:none;padding:12px 16px;border-radius:10px;background:#fef2f2;transition:all .2s ease}
 .s-foot a:hover{background:#fee2e2}
+.s-foot a svg{width:20px;height:20px;flex-shrink:0}
 
 .main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px}
 
