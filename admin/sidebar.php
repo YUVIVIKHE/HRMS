@@ -35,7 +35,7 @@
   </div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-label">Reports</div>
+    <div class="sidebar-section-label">Attendance</div>
     <nav class="sidebar-nav">
       <a href="attendance.php" class="<?= $p==='attendance.php'?'active':'' ?>">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
