@@ -52,8 +52,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $deptMap[strtolower(trim($d['name']))] = (int)$d['id'];
                     }
 
-                    // Normalise CSV headers
-                    $csvHeaders = array_map('trim', $csvHeaders);
+                    // Normalise CSV headers — strip UTF-8 BOM, whitespace, \r
+                    $csvHeaders = array_map(function($h) {
+                        $h = trim($h);
+                        $h = ltrim($h, "\xEF\xBB\xBF"); // strip UTF-8 BOM from first cell
+                        $h = trim($h, "\r\n\t ");
+                        return strtolower($h);           // lowercase for case-insensitive match
+                    }, $csvHeaders);
 
                     $successCount = 0;
                     $rowErrors    = [];
@@ -66,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // Skip completely blank rows
                             if (empty(array_filter($data, fn($v) => trim($v) !== ''))) continue;
 
-                            // Map CSV columns → values
+                            // Map CSV columns → values (headers already lowercased)
                             $row = [];
                             foreach ($csvHeaders as $i => $h) {
                                 $row[$h] = isset($data[$i]) ? trim($data[$i]) : '';
@@ -83,8 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
 
                             // Resolve department name → department_id
-                            if (isset($row['department'])) {
-                                $dKey = strtolower($row['department']);
+                            if (array_key_exists('department', $row)) {
+                                $dKey = strtolower(trim($row['department']));
                                 $row['department_id'] = $deptMap[$dKey] ?? null;
                                 if (!empty($row['department']) && $row['department_id'] === null) {
                                     $rowErrors[] = "Row $rowNum: unknown department '{$row['department']}' — set to NULL.";
@@ -92,11 +97,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 unset($row['department']);
                             }
 
-                            // Build INSERT only for known columns, skip id/created_at
+                            // Build INSERT — match lowercased CSV keys to actual DB columns
+                            // Build a lowercase → actual column name map once
+                            static $colMap = null;
+                            if ($colMap === null) {
+                                $colMap = [];
+                                foreach ($allColumns as $c) $colMap[strtolower($c)] = $c;
+                            }
+
                             $ic = []; $ph = []; $pr = [];
                             foreach ($row as $col => $val) {
-                                if (!in_array($col, $allColumns) || $col === 'id' || $col === 'created_at') continue;
-                                $ic[] = "`$col`";
+                                $actualCol = $colMap[$col] ?? null;
+                                if (!$actualCol || $actualCol === 'id' || $actualCol === 'created_at') continue;
+                                $ic[] = "`$actualCol`";
                                 $ph[] = "?";
                                 $pr[] = ($val === '') ? null : $val;
                             }
