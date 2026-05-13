@@ -146,15 +146,17 @@ if (!function_exists('fmtHrs')) {
       <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Database error: <?= htmlspecialchars($dbError) ?></div>
     <?php endif; ?>
 
-    <div class="tabs" id="mainTabs">
-      <button class="tab-btn active" onclick="switchTab('logs')">
-        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Attendance Logs
-      </button>
-      <button class="tab-btn" onclick="switchTab('locations')">
-        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        Office Locations
-      </button>
+    <div class="page-header" style="margin-bottom:20px;">
+      <div class="page-header-text">
+        <h1>Attendance</h1>
+        <p>View and filter employee &amp; manager attendance logs.</p>
+      </div>
+      <div class="page-header-actions">
+        <a href="locations.php" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Manage Locations
+        </a>
+      </div>
     </div>
 
     <!-- ── LOGS TAB ── -->
@@ -249,10 +251,17 @@ if (!function_exists('fmtHrs')) {
           </tbody>
         </table>
       </div>
-    </div>
+    </div><!-- /tab-logs -->
 
-    <!-- ── LOCATIONS TAB ── -->
-    <div id="tab-locations" style="display:none;">
+  </div>
+</div>
+</div>
+
+<script>
+// No tabs needed — locations moved to locations.php
+</script>
+</body>
+</html>
 
       <!-- Add location form -->
       <div style="display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start;margin-bottom:24px;">
