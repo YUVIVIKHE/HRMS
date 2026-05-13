@@ -139,9 +139,28 @@ function getDB(): PDO {
             // Add escalation columns if missing (for existing installs)
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated` TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated_at` DATETIME NULL"); } catch(Exception $e) {}
+            // Projects table
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `projects` (
+              `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+              `project_code`  VARCHAR(20)   NOT NULL UNIQUE,
+              `project_name`  VARCHAR(150)  NOT NULL,
+              `client_name`   VARCHAR(150)  NULL,
+              `priority`      ENUM('Low','Medium','High','Critical') NOT NULL DEFAULT 'Medium',
+              `manager_id`    INT UNSIGNED  NULL,
+              `start_date`    DATE          NOT NULL,
+              `deadline_date` DATE          NOT NULL,
+              `total_hours`   DECIMAL(8,2)  NOT NULL DEFAULT 0 COMMENT 'Working hours excl. Sundays & holidays',
+              `hr_rate`       DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `status`        ENUM('Planning','Active','On Hold','Completed','Cancelled') NOT NULL DEFAULT 'Planning',
+              `description`   TEXT          NULL,
+              `created_at`    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at`    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              INDEX `idx_proj_manager` (`manager_id`),
+              CONSTRAINT `fk_proj_manager` FOREIGN KEY (`manager_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
             // Holidays table
-            $pdo->exec("CREATE TABLE IF NOT EXISTS `holidays` (
-              `id`          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `holidays` (              `id`          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
               `title`       VARCHAR(150)  NOT NULL,
               `holiday_date`DATE          NOT NULL,
               `description` VARCHAR(255)  NULL,

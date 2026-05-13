@@ -21,6 +21,16 @@
   </div>
 
   <div class="sidebar-section">
+    <div class="sidebar-section-label">Projects</div>
+    <nav class="sidebar-nav">
+      <a href="projects.php" class="<?= $p==='projects.php'||$p==='add_project.php'?'active':'' ?>">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+        Projects
+      </a>
+    </nav>
+  </div>
+
+  <div class="sidebar-section">
     <div class="sidebar-section-label">Workforce</div>
     <nav class="sidebar-nav">
       <a href="employees.php" class="<?= in_array($p,['employees.php','add_employee.php'])?'active':'' ?>">

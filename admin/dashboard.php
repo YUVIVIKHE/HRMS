@@ -15,6 +15,12 @@ $stats = $db->query("
 
 $recent = $db->query("SELECT CONCAT(first_name,' ',last_name) AS name, email, status, created_at FROM employees ORDER BY created_at DESC LIMIT 5")->fetchAll();
 $firstName = explode(' ', $_SESSION['user_name'])[0];
+
+// Calendar
+$calMonth = (int)($_GET['cal_month'] ?? date('n'));
+$calYear  = (int)($_GET['cal_year']  ?? date('Y'));
+if ($calMonth < 1 || $calMonth > 12) $calMonth = (int)date('n');
+if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -126,6 +132,11 @@ $firstName = explode(' ', $_SESSION['user_name'])[0];
           <?php endforeach; endif; ?>
         </tbody>
       </table>
+    </div>
+
+    <!-- Calendar -->
+    <div style="margin-top:24px;">
+      <?php include __DIR__ . '/../shared/admin_calendar_widget.php'; ?>
     </div>
 
   </div><!-- /page-body -->
