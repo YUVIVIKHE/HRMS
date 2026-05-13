@@ -23,26 +23,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $empData = $empData->fetch();
 
         if ($empData) {
-            // 1. Check if user account exists
-            $existingUser = $db->prepare("SELECT id, role FROM users WHERE email = ?");
-            $existingUser->execute([$empData['email']]);
-            $existingUser = $existingUser->fetch();
+            $fullName = trim($empData['first_name'].' '.$empData['last_name']);
 
-            if ($existingUser) {
-                // Update existing account role to manager
-                $db->prepare("UPDATE users SET role = 'manager' WHERE email = ?")
-                   ->execute([$empData['email']]);
-            } else {
-                // No user account yet — create one as manager
-                require_once __DIR__ . '/../auth/mailer.php';
-                $plain = generatePassword(10);
-                $db->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'manager', 'active')")
-                   ->execute([
-                       trim($empData['first_name'].' '.$empData['last_name']),
-                       $empData['email'],
-                       password_hash($plain, PASSWORD_BCRYPT)
-                   ]);
-            }
+            // Single atomic operation: update role if user exists, insert only if not
+            // ON DUPLICATE KEY UPDATE prevents any possibility of creating a second row
+            require_once __DIR__ . '/../auth/mailer.php';
+            $plain  = generatePassword(10);
+            $hashed = password_hash($plain, PASSWORD_BCRYPT);
+
+            $db->prepare("
+                INSERT INTO users (name, email, password, role, status)
+                VALUES (?, ?, ?, 'manager', 'active')
+                ON DUPLICATE KEY UPDATE role = 'manager', name = VALUES(name)
+            ")->execute([$fullName, $empData['email'], $hashed]);
+            // Note: password is only set on INSERT (new account). Existing users keep their password.
 
             // 2. Get the new manager's user id
             $managerUser = $db->prepare("SELECT id FROM users WHERE email = ?");

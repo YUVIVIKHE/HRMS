@@ -156,3 +156,47 @@ WHERE u1.role = 'employee' AND u2.role = 'manager';
 
 -- Ensure UNIQUE constraint exists on email
 ALTER TABLE `users` ADD UNIQUE KEY IF NOT EXISTS `uq_users_email` (`email`);
+
+-- ── Attendance Regularization Requests ───────────────────────
+CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
+  `id`              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`         INT UNSIGNED  NOT NULL,
+  `log_date`        DATE          NOT NULL,
+  `req_clock_in`    TIME          NOT NULL,
+  `req_clock_out`   TIME          NOT NULL,
+  `reason`          VARCHAR(255)  NOT NULL,
+  `status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `reviewed_by`     INT UNSIGNED  NULL,
+  `reviewed_at`     DATETIME      NULL,
+  `review_note`     VARCHAR(255)  NULL,
+  `escalated`       TINYINT(1)    NOT NULL DEFAULT 0,
+  `escalated_at`    DATETIME      NULL,
+  `created_at`      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_reg_user`   (`user_id`),
+  INDEX `idx_reg_date`   (`log_date`),
+  INDEX `idx_reg_status` (`status`),
+  CONSTRAINT `fk_reg_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ── Attendance Regularization Requests ───────────────────────
+CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
+  `id`              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`         INT UNSIGNED  NOT NULL,
+  `log_date`        DATE          NOT NULL,
+  `req_clock_in`    TIME          NOT NULL,
+  `req_clock_out`   TIME          NOT NULL,
+  `reason`          VARCHAR(255)  NOT NULL,
+  `status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  `reviewed_by`     INT UNSIGNED  NULL,
+  `reviewed_at`     DATETIME      NULL,
+  `review_note`     VARCHAR(255)  NULL,
+  `escalated`       TINYINT(1)    NOT NULL DEFAULT 0,
+  `escalated_at`    DATETIME      NULL,
+  `created_at`      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_reg_user`   (`user_id`),
+  INDEX `idx_reg_date`   (`log_date`),
+  INDEX `idx_reg_status` (`status`),
+  CONSTRAINT `fk_reg_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

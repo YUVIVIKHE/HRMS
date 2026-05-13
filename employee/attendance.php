@@ -199,14 +199,18 @@ if (!function_exists('fmtHrs')) {
             <th>Work Hours</th>
             <th>Status</th>
             <th>Location</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           <?php if(empty($logs)): ?>
-            <tr class="empty-row"><td colspan="6">No attendance records this month.</td></tr>
+            <tr class="empty-row"><td colspan="7">No attendance records this month.</td></tr>
           <?php else: foreach($logs as $l):
             $short = ($l['work_seconds']??0) > 0 && ($l['work_seconds']??0) < 32400;
             $statusMap = ['present'=>'badge-green','remote'=>'badge-blue','half_day'=>'badge-yellow','late'=>'badge-yellow','absent'=>'badge-red'];
+            // Check if regularization already pending for this date
+            $regPending = $db->prepare("SELECT id FROM attendance_regularizations WHERE user_id=? AND log_date=? AND status='pending'");
+            $regPending->execute([$uid, $l['log_date']]); $regPending = $regPending->fetch();
           ?>
           <tr>
             <td class="font-semibold text-sm"><?= date('D, d M', strtotime($l['log_date'])) ?></td>
@@ -219,6 +223,17 @@ if (!function_exists('fmtHrs')) {
             </td>
             <td><span class="badge <?= $statusMap[$l['status']]??'badge-gray' ?>"><?= ucfirst(str_replace('_',' ',$l['status'])) ?></span></td>
             <td class="text-muted text-sm"><?= htmlspecialchars($l['loc_name'] ?? '—') ?></td>
+            <td>
+              <?php if($regPending): ?>
+                <span class="badge badge-yellow" style="font-size:11px;">Pending</span>
+              <?php else: ?>
+                <button type="button" class="btn btn-ghost btn-sm"
+                  onclick="openRegModal('<?= $l['log_date'] ?>','<?= date('D, d M Y',strtotime($l['log_date'])) ?>','<?= $l['clock_in']?date('H:i',strtotime($l['clock_in'])):'09:00' ?>','<?= $l['clock_out']?date('H:i',strtotime($l['clock_out'])):'18:00' ?>')">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Regularize
+                </button>
+              <?php endif; ?>
+            </td>
           </tr>
           <?php endforeach; endif; ?>
         </tbody>
@@ -227,6 +242,45 @@ if (!function_exists('fmtHrs')) {
 
   </div>
 </div>
+</div>
+
+<!-- Regularization Modal -->
+<div class="modal-overlay" id="regModal">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-header">
+      <div>
+        <h3>Request Regularization</h3>
+        <p id="regDateLabel" style="font-size:12.5px;color:var(--muted);margin-top:2px;"></p>
+      </div>
+      <button class="modal-close" onclick="document.getElementById('regModal').classList.remove('open')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form method="POST" action="my_regularizations.php" onsubmit="return validateReg()">
+      <input type="hidden" name="action" value="submit_regularization">
+      <input type="hidden" name="log_date" id="regDate">
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div class="form-group">
+            <label>Clock In Time <span class="req">*</span></label>
+            <input type="time" name="req_clock_in" id="regClockIn" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Clock Out Time <span class="req">*</span></label>
+            <input type="time" name="req_clock_out" id="regClockOut" class="form-control" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Reason <span class="req">*</span></label>
+          <textarea name="reason" class="form-control" rows="3" placeholder="Explain why regularization is needed…" required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('regModal').classList.remove('open')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit Request</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -239,6 +293,23 @@ function tick() {
     now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
 }
 tick(); setInterval(tick, 1000);
+
+// Regularization modal
+function openRegModal(date, label, clockIn, clockOut) {
+  document.getElementById('regDate').value = date;
+  document.getElementById('regDateLabel').textContent = label;
+  document.getElementById('regClockIn').value = clockIn;
+  document.getElementById('regClockOut').value = clockOut;
+  document.getElementById('regModal').classList.add('open');
+}
+document.getElementById('regModal').addEventListener('click', e => { if(e.target===document.getElementById('regModal')) document.getElementById('regModal').classList.remove('open'); });
+function validateReg() {
+  const ci = document.getElementById('regClockIn').value;
+  const co = document.getElementById('regClockOut').value;
+  if (!ci || !co) { alert('Both times are required.'); return false; }
+  if (ci >= co) { alert('Clock out must be after clock in.'); return false; }
+  return true;
+}
 
 // Clock in/out
 function doAction(action) {

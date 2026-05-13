@@ -139,6 +139,38 @@ function getDB(): PDO {
             // Add escalation columns if missing (for existing installs)
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated` TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated_at` DATETIME NULL"); } catch(Exception $e) {}
+            // Attendance regularization table
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
+              `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id` INT UNSIGNED NOT NULL,
+              `log_date` DATE NOT NULL,
+              `req_clock_in` TIME NOT NULL,
+              `req_clock_out` TIME NOT NULL,
+              `reason` VARCHAR(255) NOT NULL,
+              `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+              `reviewed_by` INT UNSIGNED NULL,
+              `reviewed_at` DATETIME NULL,
+              `review_note` VARCHAR(255) NULL,
+              `escalated` TINYINT(1) NOT NULL DEFAULT 0,
+              `escalated_at` DATETIME NULL,
+              `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              INDEX `idx_reg_user` (`user_id`),
+              INDEX `idx_reg_status` (`status`),
+              CONSTRAINT `fk_reg_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            // Attendance regularization table
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
+              `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,`user_id` INT UNSIGNED NOT NULL,
+              `log_date` DATE NOT NULL,`req_clock_in` TIME NOT NULL,`req_clock_out` TIME NOT NULL,
+              `reason` VARCHAR(255) NOT NULL,
+              `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+              `reviewed_by` INT UNSIGNED NULL,`reviewed_at` DATETIME NULL,`review_note` VARCHAR(255) NULL,
+              `escalated` TINYINT(1) NOT NULL DEFAULT 0,`escalated_at` DATETIME NULL,
+              `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),INDEX `idx_reg_user` (`user_id`),INDEX `idx_reg_date` (`log_date`),
+              CONSTRAINT `fk_reg_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
         } catch (PDOException $e) {
             error_log('DB Connection failed: ' . $e->getMessage());
             header('Location: ../index.php?error=server');
