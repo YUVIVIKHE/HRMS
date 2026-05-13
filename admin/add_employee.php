@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
+require_once __DIR__ . '/../auth/provision_user.php';
 guardRole('admin');
 $db = getDB();
 
@@ -49,7 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!empty($insertCols)) {
                 $db->prepare("INSERT INTO employees (".implode(',',$insertCols).") VALUES (".implode(',',$placeholders).")")->execute($params);
-                $_SESSION['flash_success'] = "Employee added successfully. Employee ID: $autoEmpId";
+
+                // Auto-create login account and send welcome email
+                $empEmail     = trim($_POST['email'] ?? '');
+                $empFirstName = trim($_POST['first_name'] ?? '');
+                $empLastName  = trim($_POST['last_name'] ?? '');
+                $provision    = provisionEmployeeUser($db, $empEmail, $empFirstName, $empLastName);
+
+                $_SESSION['flash_success'] = "Employee added. ID: $autoEmpId. " . $provision['message'];
                 header("Location: employees.php"); exit;
             }
         } catch (PDOException $e) {
@@ -158,6 +166,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if (!empty($ic)) {
                                 $db->prepare("INSERT INTO employees (" . implode(',', $ic) . ") VALUES (" . implode(',', $ph) . ")")->execute($pr);
                                 $successCount++;
+
+                                // Auto-create login account for this employee
+                                $rowEmail = $row['email'] ?? '';
+                                $rowFirst = $row['first_name'] ?? '';
+                                $rowLast  = $row['last_name'] ?? '';
+                                if (!empty($rowEmail)) {
+                                    $provision = provisionEmployeeUser($db, $rowEmail, $rowFirst, $rowLast);
+                                    if (!$provision['success']) {
+                                        $rowErrors[] = "Row $rowNum (account): " . $provision['message'];
+                                    }
+                                }
                             }
                         }
                         $db->commit();

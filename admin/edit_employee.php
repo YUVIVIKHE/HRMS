@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
+require_once __DIR__ . '/../auth/provision_user.php';
 guardRole('admin');
 $db = getDB();
 
@@ -12,8 +13,33 @@ $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // ── Handle Save ──────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_employee') {
-    try {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $postAction = $_POST['action'] ?? '';
+
+    // Resend / create login account
+    if ($postAction === 'provision_user') {
+        $empData = $db->prepare("SELECT email, first_name, last_name FROM employees WHERE id = ?");
+        $empData->execute([$id]);
+        $empData = $empData->fetch();
+        if ($empData) {
+            $provision = provisionEmployeeUser($db, $empData['email'], $empData['first_name'], $empData['last_name']);
+            if ($provision['success']) {
+                $_SESSION['flash_success'] = $provision['message'];
+            } else {
+                // Already exists — reset password and resend
+                require_once __DIR__ . '/../auth/mailer.php';
+                $newPass = generatePassword(10);
+                $db->prepare("UPDATE users SET password = ? WHERE email = ?")
+                   ->execute([password_hash($newPass, PASSWORD_BCRYPT), $empData['email']]);
+                $sent = sendWelcomeEmail($empData['email'], trim($empData['first_name'].' '.$empData['last_name']), $newPass);
+                $_SESSION['flash_success'] = "Password reset and " . ($sent ? "email sent to {$empData['email']}." : "email delivery failed.");
+            }
+        }
+        header("Location: edit_employee.php?id=$id"); exit;
+    }
+
+    if ($postAction === 'edit_employee') {
+        try {
         // All editable columns (excluding id, created_at)
         $allCols = $db->query("SHOW COLUMNS FROM employees")->fetchAll(PDO::FETCH_COLUMN);
         $skip    = ['id', 'created_at'];
@@ -41,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
         $_SESSION['flash_error'] = "Update failed: " . $e->getMessage();
         header("Location: edit_employee.php?id=$id"); exit;
     }
-}
+    } // end if edit_employee
+} // end POST
 
 // ── Load employee ────────────────────────────────────────────
 $emp = $db->prepare("SELECT * FROM employees WHERE id = ?");
@@ -57,6 +84,11 @@ $customCols  = array_diff($allCols, $baseColumns);
 $deptList = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 
 $fullName = htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']);
+
+// Check if login account exists
+$hasAccount = $db->prepare("SELECT id FROM users WHERE email = ?");
+$hasAccount->execute([$emp['email']]);
+$hasAccount = (bool)$hasAccount->fetch();
 
 // Helper: field value
 function val($emp, $key) { return htmlspecialchars($emp[$key] ?? ''); }
@@ -108,8 +140,22 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
       <div>
         <div style="font-size:17px;font-weight:800;color:var(--text);"><?= $fullName ?></div>
         <div style="font-size:13px;color:var(--muted);margin-top:2px;"><?= val($emp,'email') ?> <?= $emp['employee_id'] ? '· '.$emp['employee_id'] : '' ?></div>
+        <div style="margin-top:6px;">
+          <?php if($hasAccount): ?>
+            <span class="badge badge-green">Login Account Active</span>
+          <?php else: ?>
+            <span class="badge badge-red">No Login Account</span>
+          <?php endif; ?>
+        </div>
       </div>
       <div style="margin-left:auto;display:flex;gap:10px;">
+        <form method="POST" style="display:inline;" onsubmit="return confirm('This will reset the password and send a new login email to <?= htmlspecialchars($emp['email']) ?>. Continue?')">
+          <input type="hidden" name="action" value="provision_user">
+          <button type="submit" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Send Login Credentials
+          </button>
+        </form>
         <a href="employees.php" class="btn btn-secondary">← Back to List</a>
       </div>
     </div>
