@@ -107,94 +107,6 @@ try {
     error_log('Admin attendance error: ' . $e->getMessage());
 }
 
-// ── Export CSV ───────────────────────────────────────────────
-if ($export && empty($dbError)) {
-    $fname = 'attendance_' . $filterFrom . '_to_' . $filterTo . '.csv';
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $fname . '"');
-
-    $out = fopen('php://output', 'w');
-
-    // UTF-8 BOM so Excel opens correctly
-    fputs($out, "\xEF\xBB\xBF");
-
-    // Group allRows by user
-    $byUser = [];
-    foreach ($allRows as $r) {
-        $byUser[$r['user_id']][] = $r;
-    }
-
-    foreach ($byUser as $uid => $rows) {
-        $uName = $rows[0]['user_name'];
-        $uRole = ucfirst($rows[0]['user_role']);
-
-        // Employee header block
-        fputcsv($out, ['Employee', $uName, 'Role', $uRole]);
-        fputcsv($out, ['Period', $filterFrom . ' to ' . $filterTo]);
-        fputcsv($out, []); // blank line
-
-        // Column headers
-        fputcsv($out, ['Date', 'Day', 'Clock In', 'Clock Out', 'Work Hours', 'Status', 'Location']);
-
-        $totalSec     = 0;
-        $presentDays  = 0;
-        $absentDays   = 0;
-        $lateDays     = 0;
-        $shortDays    = 0;
-
-        foreach ($rows as $r) {
-            $sec    = (int)($r['work_seconds'] ?? 0);
-            $status = $r['status'];
-            $isAbs  = $status === 'absent';
-
-            // Work hours as plain text — no special chars
-            if ($sec > 0) {
-                $wh = floor($sec/3600) . 'h ' . str_pad(floor(($sec%3600)/60), 2, '0', STR_PAD_LEFT) . 'm';
-            } else {
-                $wh = $isAbs ? '' : '0h 00m';
-            }
-
-            // Clock times — plain empty string for absent/missing
-            $ci = ($r['clock_in']  && !$isAbs) ? date('h:i A', strtotime($r['clock_in']))  : '';
-            $co = ($r['clock_out'] && !$isAbs) ? date('h:i A', strtotime($r['clock_out'])) : '';
-
-            fputcsv($out, [
-                date('d-M-Y', strtotime($r['log_date'])),
-                date('D',     strtotime($r['log_date'])),
-                $ci,
-                $co,
-                $wh,
-                ucfirst(str_replace('_', ' ', $status)),
-                $isAbs ? '' : ($r['location_name'] ?? ''),
-            ]);
-
-            $totalSec += $sec;
-            if (in_array($status, ['present','remote'])) $presentDays++;
-            if ($status === 'absent')   $absentDays++;
-            if ($status === 'late')     { $presentDays++; $lateDays++; }
-            if ($sec > 0 && $sec < 32400) $shortDays++;
-        }
-
-        // Summary row
-        $totalH = floor($totalSec/3600);
-        $totalM = str_pad(floor(($totalSec%3600)/60), 2, '0', STR_PAD_LEFT);
-        fputcsv($out, []); // blank
-        fputcsv($out, [
-            'SUMMARY',
-            'Present: ' . $presentDays . ' days',
-            'Absent: '  . $absentDays  . ' days',
-            'Late: '    . $lateDays    . ' days',
-            'Short (<9h): ' . $shortDays . ' days',
-            'Total Hours: ' . $totalH . 'h ' . $totalM . 'm',
-            '',
-        ]);
-        fputcsv($out, []); // blank separator between employees
-        fputcsv($out, []); // extra blank
-    }
-
-    fclose($out); exit;
-}
-
 $statusMap = ['present'=>'badge-green','remote'=>'badge-blue','half_day'=>'badge-yellow','late'=>'badge-yellow','absent'=>'badge-red'];
 ?>
 <!DOCTYPE html>
@@ -282,10 +194,10 @@ $statusMap = ['present'=>'badge-green','remote'=>'badge-blue','half_day'=>'badge
               Filter
             </button>
             <a href="attendance.php" class="btn btn-secondary">Reset</a>
-            <a href="attendance.php?from=<?= urlencode($filterFrom) ?>&to=<?= urlencode($filterTo) ?>&user_id=<?= $filterUser ?>&role=<?= urlencode($filterRole) ?>&export=1"
+            <a href="export_attendance.php?from=<?= urlencode($filterFrom) ?>&to=<?= urlencode($filterTo) ?>&user_id=<?= $filterUser ?>&role=<?= urlencode($filterRole) ?>"
                class="btn btn-success">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export CSV
+              Export Excel
             </a>
           </div>
         </form>
