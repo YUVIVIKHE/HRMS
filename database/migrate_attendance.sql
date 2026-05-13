@@ -137,3 +137,11 @@ INSERT IGNORE INTO `leave_types` (`id`,`name`,`days_per_credit`,`credit_cycle`,`
 ALTER TABLE `leave_applications`
   ADD COLUMN IF NOT EXISTS `escalated_at` DATETIME NULL COMMENT 'Set when pending >3 days, escalated to admin',
   ADD COLUMN IF NOT EXISTS `escalated` TINYINT(1) NOT NULL DEFAULT 0;
+
+-- ── Remove duplicate users created by the promote-to-manager bug ─────────
+-- Keeps the manager-role row, deletes the employee-role duplicate for same email
+DELETE u1 FROM users u1
+INNER JOIN users u2 ON u1.email = u2.email
+WHERE u1.role = 'employee'
+  AND u2.role = 'manager'
+  AND u1.id < u2.id;

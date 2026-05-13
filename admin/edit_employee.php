@@ -23,14 +23,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $empData = $empData->fetch();
 
         if ($empData) {
-            // 1. Update users table role to manager
-            $updated = $db->prepare("UPDATE users SET role = 'manager' WHERE email = ?");
-            $updated->execute([$empData['email']]);
+            // 1. Check if user account exists
+            $existingUser = $db->prepare("SELECT id, role FROM users WHERE email = ?");
+            $existingUser->execute([$empData['email']]);
+            $existingUser = $existingUser->fetch();
 
-            if ($updated->rowCount() === 0) {
+            if ($existingUser) {
+                // Update existing account role to manager
+                $db->prepare("UPDATE users SET role = 'manager' WHERE email = ?")
+                   ->execute([$empData['email']]);
+            } else {
                 // No user account yet — create one as manager
                 require_once __DIR__ . '/../auth/mailer.php';
-                $plain  = generatePassword(10);
+                $plain = generatePassword(10);
                 $db->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'manager', 'active')")
                    ->execute([
                        trim($empData['first_name'].' '.$empData['last_name']),
