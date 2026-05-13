@@ -13,6 +13,12 @@ $myLeaves      = [];
 $myTaskList    = [];
 $attendance    = [];
 $firstName     = explode(' ', $_SESSION['user_name'])[0];
+
+// Calendar data
+$calMonth = (int)($_GET['cal_month'] ?? date('n'));
+$calYear  = (int)($_GET['cal_year']  ?? date('Y'));
+if ($calMonth < 1 || $calMonth > 12) $calMonth = (int)date('n');
+if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -201,6 +207,11 @@ $firstName     = explode(' ', $_SESSION['user_name'])[0];
           <?php endforeach; endif; ?>
         </tbody>
       </table>
+    </div>
+
+    <!-- Calendar -->
+    <div style="margin-top:20px;">
+      <?php include __DIR__ . '/../shared/calendar_widget.php'; ?>
     </div>
 
   </div>
