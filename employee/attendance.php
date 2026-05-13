@@ -27,10 +27,14 @@ $totalDays    = count($logs);
 $presentDays  = count(array_filter($logs, fn($l) => in_array($l['status'], ['present','remote','late'])));
 $totalSeconds = array_sum(array_column($logs, 'work_seconds'));
 
-function fmtTime($dt) { return $dt ? date('h:i A', strtotime($dt)) : '—'; }
-function fmtHrs($sec) {
-    if (!$sec) return '—';
-    return sprintf('%dh %02dm', floor($sec/3600), floor(($sec%3600)/60));
+if (!function_exists('fmtTime')) {
+    function fmtTime($dt) { return $dt ? date('h:i A', strtotime($dt)) : '—'; }
+}
+if (!function_exists('fmtHrs')) {
+    function fmtHrs($sec) {
+        if (!$sec) return '—';
+        return sprintf('%dh %02dm', floor($sec/3600), floor(($sec%3600)/60));
+    }
 }
 ?>
 <!DOCTYPE html>

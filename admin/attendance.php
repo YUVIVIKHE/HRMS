@@ -42,36 +42,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Filters ──────────────────────────────────────────────────
-$filterDate  = $_GET['date']   ?? date('Y-m');   // YYYY-MM
+$filterDate  = $_GET['date']   ?? date('Y-m');
 $filterUser  = (int)($_GET['user_id'] ?? 0);
 $filterRole  = $_GET['role']   ?? '';
 
-// Build log query
-$where  = ["DATE_FORMAT(al.log_date,'%Y-%m') = ?"];
-$params = [$filterDate];
-if ($filterUser > 0) { $where[] = "al.user_id = ?"; $params[] = $filterUser; }
-if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
+$logs      = [];
+$locations = [];
+$users     = [];
+$dbError   = null;
 
-$logs = $db->prepare("
-    SELECT al.*, u.name AS user_name, u.role AS user_role,
-           loc.name AS location_name
-    FROM attendance_logs al
-    JOIN users u ON al.user_id = u.id
-    LEFT JOIN attendance_locations loc ON al.location_id = loc.id
-    WHERE " . implode(' AND ', $where) . "
-    ORDER BY al.log_date DESC, u.name ASC
-");
-$logs->execute($params);
-$logs = $logs->fetchAll();
+try {
+    $where  = ["DATE_FORMAT(al.log_date,'%Y-%m') = ?"];
+    $params = [$filterDate];
+    if ($filterUser > 0) { $where[] = "al.user_id = ?"; $params[] = $filterUser; }
+    if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
 
-$locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote DESC, name ASC")->fetchAll();
-$users     = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+    $stmt = $db->prepare("
+        SELECT al.*, u.name AS user_name, u.role AS user_role,
+               loc.name AS location_name
+        FROM attendance_logs al
+        JOIN users u ON al.user_id = u.id
+        LEFT JOIN attendance_locations loc ON al.location_id = loc.id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY al.log_date DESC, u.name ASC
+    ");
+    $stmt->execute($params);
+    $logs = $stmt->fetchAll();
 
-function fmtTime($dt) { return $dt ? date('h:i A', strtotime($dt)) : '—'; }
-function fmtHrs($sec) {
-    if (!$sec) return '—';
-    $h = floor($sec / 3600); $m = floor(($sec % 3600) / 60);
-    return sprintf('%dh %02dm', $h, $m);
+    $locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote DESC, name ASC")->fetchAll();
+    $users     = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+} catch (PDOException $e) {
+    $dbError = $e->getMessage();
+    error_log('Admin attendance error: ' . $e->getMessage());
+}
+
+if (!function_exists('fmtTime')) {
+    function fmtTime($dt) { return $dt ? date('h:i A', strtotime($dt)) : '—'; }
+}
+if (!function_exists('fmtHrs')) {
+    function fmtHrs($sec) {
+        if (!$sec) return '—';
+        return sprintf('%dh %02dm', floor($sec/3600), floor(($sec%3600)/60));
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -107,6 +119,9 @@ function fmtHrs($sec) {
     <?php endif; ?>
     <?php if($errorMsg): ?>
       <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
+    <?php endif; ?>
+    <?php if($dbError): ?>
+      <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Database error: <?= htmlspecialchars($dbError) ?></div>
     <?php endif; ?>
 
     <div class="tabs" id="mainTabs">
