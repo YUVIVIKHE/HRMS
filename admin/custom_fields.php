@@ -24,10 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $fieldName = preg_replace('/[^a-z0-9_]/', '_', strtolower($label));
             $fieldType = $_POST['field_type'] === 'date' ? 'DATE' : 'VARCHAR(255)';
             $isRequired = isset($_POST['is_required']) ? true : false;
-            $appliesTo = $_POST['applies_to'] ?? 'all';
             
             // Generate comment metadata
-            $meta = json_encode(['required' => $isRequired, 'applies_to' => $appliesTo, 'label' => $label]);
+            $meta = json_encode(['required' => $isRequired, 'label' => $label]);
             
             $existingCols = array_column($allColumnsFull, 'Field');
             if (!empty($fieldName) && !in_array($fieldName, $existingCols)) {
@@ -63,7 +62,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $oldName = $_POST['old_field_name'];
             $label = trim($_POST['field_label']);
             $isRequired = isset($_POST['is_required']) ? true : false;
-            $appliesTo = $_POST['applies_to'] ?? 'all';
             
             // Find current type
             $currentType = 'VARCHAR(255)';
@@ -74,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            $meta = json_encode(['required' => $isRequired, 'applies_to' => $appliesTo, 'label' => $label]);
+            $meta = json_encode(['required' => $isRequired, 'label' => $label]);
             $db->exec("ALTER TABLE employees MODIFY COLUMN `$oldName` $currentType DEFAULT NULL COMMENT '$meta'");
             $_SESSION['flash_success'] = "Custom field updated successfully!";
         } catch (PDOException $e) {
@@ -94,7 +92,7 @@ foreach ($allColumnsFull as $col) {
     if (!in_array($col['Field'], $baseColumns)) {
         $meta = json_decode($col['Comment'], true);
         if (!$meta) {
-            $meta = ['required' => false, 'applies_to' => 'all', 'label' => ucwords(str_replace('_', ' ', $col['Field']))];
+            $meta = ['required' => false, 'label' => ucwords(str_replace('_', ' ', $col['Field']))];
         }
         $customCols[] = [
             'field' => $col['Field'],
@@ -247,14 +245,6 @@ tr:last-child td { border-bottom: none; }
                         <option value="date">Date</option>
                     </select>
                 </div>
-                <div class="form-group" style="flex:1;">
-                    <label>Applies To</label>
-                    <select name="applies_to" class="form-control">
-                        <option value="all">Everyone</option>
-                        <option value="employee">Employee Only</option>
-                        <option value="manager">Manager Only</option>
-                    </select>
-                </div>
             </div>
 
             <div style="margin-bottom:32px; display:flex; align-items:center; gap:10px;">
@@ -273,21 +263,19 @@ tr:last-child td { border-bottom: none; }
                 <tr>
                     <th>Field Label</th>
                     <th>Database Column</th>
-                    <th>Applies To</th>
                     <th>Required</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if(empty($customCols)): ?>
-                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--muted);">No custom fields added yet.</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--muted);">No custom fields added yet.</td></tr>
                 <?php else: foreach($customCols as $col): 
                     $meta = $col['meta'];
                 ?>
                     <tr>
                         <td style="font-weight:600; color:var(--text);"><?= htmlspecialchars($meta['label']) ?></td>
                         <td style="font-family:monospace; color:var(--muted);"><?= htmlspecialchars($col['field']) ?></td>
-                        <td><span class="badge" style="text-transform:capitalize;"><?= htmlspecialchars($meta['applies_to']) ?></span></td>
                         <td>
                             <?php if(!empty($meta['required'])): ?>
                                 <span class="badge badge-required">Required</span>
@@ -296,7 +284,7 @@ tr:last-child td { border-bottom: none; }
                             <?php endif; ?>
                         </td>
                         <td>
-                            <button type="button" class="action-btn" onclick="openEditModal('<?= htmlspecialchars($col['field']) ?>', '<?= htmlspecialchars(addslashes($meta['label'])) ?>', '<?= htmlspecialchars($meta['applies_to']) ?>', <?= !empty($meta['required']) ? 'true' : 'false' ?>)">Edit</button>
+                            <button type="button" class="action-btn" onclick="openEditModal('<?= htmlspecialchars($col['field']) ?>', '<?= htmlspecialchars(addslashes($meta['label'])) ?>', <?= !empty($meta['required']) ? 'true' : 'false' ?>)">Edit</button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to completely delete this field and all data associated with it?');">
                                 <input type="hidden" name="action" value="delete_custom_field">
                                 <input type="hidden" name="field_name" value="<?= htmlspecialchars($col['field']) ?>">
@@ -323,14 +311,7 @@ tr:last-child td { border-bottom: none; }
                 <input type="text" name="field_label" id="edit_field_label" class="form-control" required>
             </div>
             
-            <div class="form-group" style="margin-bottom:24px;">
-                <label>Applies To</label>
-                <select name="applies_to" id="edit_applies_to" class="form-control">
-                    <option value="all">Everyone</option>
-                    <option value="employee">Employee Only</option>
-                    <option value="manager">Manager Only</option>
-                </select>
-            </div>
+
 
             <div style="margin-bottom:32px; display:flex; align-items:center; gap:10px;">
                 <input type="checkbox" name="is_required" id="edit_is_required" style="width:18px; height:18px; accent-color:var(--accent); cursor:pointer;">
@@ -346,10 +327,9 @@ tr:last-child td { border-bottom: none; }
 </div>
 
 <script>
-function openEditModal(fieldName, label, appliesTo, isRequired) {
+function openEditModal(fieldName, label, isRequired) {
     document.getElementById('edit_old_field_name').value = fieldName;
     document.getElementById('edit_field_label').value = label;
-    document.getElementById('edit_applies_to').value = appliesTo;
     document.getElementById('edit_is_required').checked = isRequired;
     document.getElementById('editModal').classList.add('active');
 }
