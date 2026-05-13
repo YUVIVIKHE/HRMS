@@ -120,11 +120,15 @@ function getDB(): PDO {
               `days` DECIMAL(5,1) NOT NULL,`reason` TEXT NULL,
               `status` ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
               `reviewed_by` INT UNSIGNED NULL,`reviewed_at` DATETIME NULL,`review_note` VARCHAR(255) NULL,
+              `escalated` TINYINT(1) NOT NULL DEFAULT 0,`escalated_at` DATETIME NULL,
               `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),INDEX `idx_la_user` (`user_id`),INDEX `idx_la_status` (`status`),
               CONSTRAINT `fk_la_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
               CONSTRAINT `fk_la_type` FOREIGN KEY (`leave_type_id`) REFERENCES `leave_types`(`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            // Add escalation columns if missing (for existing installs)
+            try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated` TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
+            try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated_at` DATETIME NULL"); } catch(Exception $e) {}
         } catch (PDOException $e) {
             error_log('DB Connection failed: ' . $e->getMessage());
             header('Location: ../index.php?error=server');

@@ -132,3 +132,8 @@ INSERT IGNORE INTO `leave_types` (`id`,`name`,`days_per_credit`,`credit_cycle`,`
 (1,'Casual Leave',   1.0, 'monthly', 1, 0,  '#10b981'),
 (2,'Privilege Leave',1.0, 'monthly', 1, 30, '#4f46e5'),
 (3,'Sick Leave',     1.0, 'monthly', 1, 0,  '#ef4444');
+
+-- Add escalation tracking to leave_applications
+ALTER TABLE `leave_applications`
+  ADD COLUMN IF NOT EXISTS `escalated_at` DATETIME NULL COMMENT 'Set when pending >3 days, escalated to admin',
+  ADD COLUMN IF NOT EXISTS `escalated` TINYINT(1) NOT NULL DEFAULT 0;
