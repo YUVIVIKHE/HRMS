@@ -139,9 +139,18 @@ function getDB(): PDO {
             // Add escalation columns if missing (for existing installs)
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated` TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated_at` DATETIME NULL"); } catch(Exception $e) {}
+            // Holidays table
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `holidays` (
+              `id`          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+              `title`       VARCHAR(150)  NOT NULL,
+              `holiday_date`DATE          NOT NULL,
+              `description` VARCHAR(255)  NULL,
+              `created_at`  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uq_holiday_date` (`holiday_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
             // Attendance regularization table
-            try {
-                $pdo->exec("CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
+            try {                $pdo->exec("CREATE TABLE IF NOT EXISTS `attendance_regularizations` (
                   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
                   `user_id` INT UNSIGNED NOT NULL,
                   `log_date` DATE NOT NULL,
