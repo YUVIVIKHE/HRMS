@@ -7,6 +7,7 @@ $uid = $_SESSION['user_id'];
 $today = date('Y-m-d');
 
 // Today's log
+try {
 $todayLog = $db->prepare("SELECT al.*, loc.name AS loc_name, loc.is_remote FROM attendance_logs al LEFT JOIN attendance_locations loc ON al.location_id = loc.id WHERE al.user_id = ? AND al.log_date = ?");
 $todayLog->execute([$uid, $today]);
 $todayLog = $todayLog->fetch();
@@ -16,6 +17,10 @@ $month = date('Y-m');
 $logs  = $db->prepare("SELECT al.*, loc.name AS loc_name FROM attendance_logs al LEFT JOIN attendance_locations loc ON al.location_id = loc.id WHERE al.user_id = ? AND DATE_FORMAT(al.log_date,'%Y-%m') = ? ORDER BY al.log_date DESC");
 $logs->execute([$uid, $month]);
 $logs = $logs->fetchAll();
+} catch (PDOException $e) {
+    $todayLog = null; $logs = [];
+    error_log('Attendance query error: ' . $e->getMessage());
+}
 
 // Stats
 $totalDays    = count($logs);

@@ -6,6 +6,7 @@ $db  = getDB();
 $uid = $_SESSION['user_id'];
 $today = date('Y-m-d');
 
+try {
 $todayLog = $db->prepare("SELECT al.*, loc.name AS loc_name FROM attendance_logs al LEFT JOIN attendance_locations loc ON al.location_id = loc.id WHERE al.user_id = ? AND al.log_date = ?");
 $todayLog->execute([$uid, $today]);
 $todayLog = $todayLog->fetch();
@@ -14,6 +15,10 @@ $month = date('Y-m');
 $logs  = $db->prepare("SELECT al.*, loc.name AS loc_name FROM attendance_logs al LEFT JOIN attendance_locations loc ON al.location_id = loc.id WHERE al.user_id = ? AND DATE_FORMAT(al.log_date,'%Y-%m') = ? ORDER BY al.log_date DESC");
 $logs->execute([$uid, $month]);
 $logs = $logs->fetchAll();
+} catch (PDOException $e) {
+    $todayLog = null; $logs = [];
+    error_log('Attendance query error: ' . $e->getMessage());
+}
 
 $presentDays  = count(array_filter($logs, fn($l) => in_array($l['status'], ['present','remote','late'])));
 $totalSeconds = array_sum(array_column($logs, 'work_seconds'));
