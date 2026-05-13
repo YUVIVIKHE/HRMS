@@ -44,7 +44,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['csv_file']['tmp_name'];
             if (($handle = fopen($file, "r")) !== FALSE) {
-                $csvHeaders = fgetcsv($handle, 10000, ",");
+                // Auto-detect delimiter — read first line raw to check
+                $firstLine = fgets($handle);
+                rewind($handle);
+                $delimiter = ',';
+                if (substr_count($firstLine, "\t") > substr_count($firstLine, ",")) {
+                    $delimiter = "\t";
+                } elseif (substr_count($firstLine, ";") > substr_count($firstLine, ",")) {
+                    $delimiter = ";";
+                }
+
+                $csvHeaders = fgetcsv($handle, 10000, $delimiter);
                 if ($csvHeaders) {
                     // Build department name → id lookup (case-insensitive)
                     $deptMap = [];
@@ -59,13 +69,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         return strtolower($h); // lowercase for case-insensitive match
                     }, $csvHeaders);
 
+                    // Bail early if required headers are missing from the file itself
+                    $requiredHeaders = ['first_name', 'last_name', 'email'];
+                    $missingHeaders  = array_diff($requiredHeaders, $csvHeaders);
+                    if (!empty($missingHeaders)) {
+                        $_SESSION['flash_error'] = "CSV is missing required column(s): " . implode(', ', $missingHeaders)
+                            . ". Found columns: " . implode(', ', $csvHeaders);
+                        fclose($handle);
+                        header("Location: add_employee.php?tab=bulk"); exit;
+                    }
+
                     $successCount = 0;
                     $rowErrors    = [];
                     $rowNum       = 1; // 1 = header row
 
                     $db->beginTransaction();
                     try {
-                        while (($data = fgetcsv($handle, 10000, ",")) !== FALSE) {
+                        while (($data = fgetcsv($handle, 10000, $delimiter)) !== FALSE) {
                             $rowNum++;
                             // Skip completely blank rows
                             if (empty(array_filter($data, fn($v) => trim($v) !== ''))) continue;

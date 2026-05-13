@@ -87,15 +87,12 @@ $sample = [
     'passport_date_of_expiry'  => '2030-01-01',
 ];
 
-// Output CSV with UTF-8 BOM so Excel opens it correctly without encoding issues
+// Output CSV — no BOM, plain UTF-8, comma delimited
+// Excel will open this fine; the BOM was causing import issues
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename=employee_bulk_template.csv');
 
 $out = fopen('php://output', 'w');
-
-// Write UTF-8 BOM — Excel needs this, and our importer strips it
-fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
-
 fputcsv($out, $headers);
 
 $row = [];
