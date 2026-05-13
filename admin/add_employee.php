@@ -20,23 +20,7 @@ $customColumns = array_diff($allColumns, $baseColumns);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'add_custom_field') {
-        try {
-            $fieldName = preg_replace('/[^a-z0-9_]/', '_', strtolower(trim($_POST['field_name'])));
-            $fieldType = $_POST['field_type'] === 'date' ? 'DATE' : 'VARCHAR(255)';
-            
-            if (!empty($fieldName) && !in_array($fieldName, $allColumns)) {
-                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL");
-                $_SESSION['flash_success'] = "Custom field '$fieldName' added successfully to the database!";
-            } else {
-                $_SESSION['flash_error'] = "Invalid field name or field already exists.";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['flash_error'] = "Error adding custom field: " . $e->getMessage();
-        }
-        header("Location: add_employee.php");
-        exit;
-    } elseif ($action === 'save_employee') {
+    if ($action === 'save_employee') {
         try {
             $insertCols = [];
             $placeholders = [];
@@ -263,26 +247,6 @@ select.form-control { cursor: pointer; }
         <div class="alert alert-error"><?= htmlspecialchars($errorMsg) ?></div>
     <?php endif; ?>
 
-    <!-- Custom Field Generator -->
-    <form class="custom-field-panel" method="POST">
-        <input type="hidden" name="action" value="add_custom_field">
-        <div style="flex:2">
-            <div style="font-weight:700;margin-bottom:8px;color:#166534">Schema Builder: Add Custom Database Field</div>
-            <p style="font-size:0.8rem;color:#15803d;margin-bottom:12px">Create a new field directly in the `employees` table.</p>
-        </div>
-        <div class="form-group" style="flex:1">
-            <label style="color:#166534">Field Name (e.g. twitter_handle)</label>
-            <input type="text" name="field_name" class="form-control" required pattern="[a-zA-Z0-9_ ]+">
-        </div>
-        <div class="form-group" style="flex:1">
-            <label style="color:#166534">Data Type</label>
-            <select name="field_type" class="form-control">
-                <option value="text">Text / Varchar</option>
-                <option value="date">Date</option>
-            </select>
-        </div>
-        <button type="submit" class="btn btn-success" style="height:42px;">+ Add Field</button>
-    </form>
 
     <form class="form-container" method="POST">
         <input type="hidden" name="action" value="save_employee">
