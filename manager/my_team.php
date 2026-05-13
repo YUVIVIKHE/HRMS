@@ -56,37 +56,6 @@ $firstName = explode(' ', $_SESSION['user_name'])[0];
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
 <style>
-.member-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  transition: box-shadow .2s, transform .2s;
-}
-.member-card:hover {
-  box-shadow: var(--shadow);
-  transform: translateY(-2px);
-}
-.member-avatar {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  background: var(--brand-light);
-  color: var(--brand);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 800;
-  flex-shrink: 0;
-}
-.member-name  { font-size: 14px; font-weight: 700; color: var(--text); }
-.member-title { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-.member-meta  { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.meta-item {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 12px; color: var(--muted);
-}
-.meta-item svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -193,62 +162,64 @@ $firstName = explode(' ', $_SESSION['user_name'])[0];
     </div>
 
     <?php if(empty($teamMembers)): ?>
-      <div class="card">
-        <div class="card-body" style="text-align:center;padding:60px 20px;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="display:block;margin:0 auto 16px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No team members yet</div>
-          <div style="font-size:13.5px;color:var(--muted);">Employees added to the <?= htmlspecialchars($deptName ?? '') ?> department will appear here.</div>
+      <div class="table-wrap">
+        <div style="text-align:center;padding:60px 20px;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="display:block;margin:0 auto 12px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px;">No team members yet</div>
+          <div style="font-size:13px;color:var(--muted);">Employees in the <?= htmlspecialchars($deptName ?? '') ?> department will appear here.</div>
         </div>
       </div>
     <?php else: ?>
 
-    <!-- Member cards grid -->
-    <div id="teamGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
-      <?php foreach($teamMembers as $m): ?>
-      <div class="member-card" data-name="<?= htmlspecialchars(strtolower($m['first_name'].' '.$m['last_name'])) ?>"
-           data-title="<?= htmlspecialchars(strtolower($m['job_title'] ?? '')) ?>">
-        <div class="member-avatar"><?= strtoupper(substr($m['first_name'],0,1)) ?></div>
-        <div style="flex:1;min-width:0;">
-          <div class="member-name"><?= htmlspecialchars($m['first_name'].' '.$m['last_name']) ?></div>
-          <div class="member-title"><?= htmlspecialchars($m['job_title'] ?: 'No title') ?></div>
-          <div class="member-meta">
-            <span class="badge <?= strtolower($m['status'])==='active'?'badge-green':'badge-red' ?>" style="font-size:11px;">
-              <?= ucfirst(htmlspecialchars($m['status'])) ?>
-            </span>
-            <span class="badge <?= $m['employee_type']==='FTE'?'badge-blue':'badge-yellow' ?>" style="font-size:11px;">
-              <?= htmlspecialchars($m['employee_type'] ?: '—') ?>
-            </span>
-          </div>
-          <div class="member-meta" style="margin-top:8px;">
-            <div class="meta-item">
-              <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/></svg>
-              <?= htmlspecialchars($m['email']) ?>
-            </div>
-            <?php if($m['phone']): ?>
-            <div class="meta-item">
-              <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <?= htmlspecialchars($m['phone']) ?>
-            </div>
-            <?php endif; ?>
-            <?php if($m['location']): ?>
-            <div class="meta-item">
-              <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <?= htmlspecialchars($m['location']) ?>
-            </div>
-            <?php endif; ?>
-            <?php if($m['date_of_joining']): ?>
-            <div class="meta-item">
-              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Joined <?= date('M Y', strtotime($m['date_of_joining'])) ?>
-            </div>
-            <?php endif; ?>
-          </div>
-        </div>
-      </div>
-      <?php endforeach; ?>
+    <div class="table-wrap">
+      <table id="teamTable">
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Employee</th>
+            <th>Job Title</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Phone</th>
+            <th>Location</th>
+            <th>Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach($teamMembers as $i => $m): ?>
+          <tr class="team-row"
+              data-search="<?= htmlspecialchars(strtolower($m['first_name'].' '.$m['last_name'].' '.($m['job_title']??'').' '.($m['email']??''))) ?>">
+            <td class="text-muted text-sm"><?= $i + 1 ?></td>
+            <td>
+              <div class="td-user">
+                <div class="td-avatar"><?= strtoupper(substr($m['first_name'],0,1)) ?></div>
+                <div>
+                  <div class="td-name"><?= htmlspecialchars($m['first_name'].' '.$m['last_name']) ?></div>
+                  <div class="td-sub"><?= htmlspecialchars($m['email']) ?></div>
+                </div>
+              </div>
+            </td>
+            <td class="text-muted"><?= htmlspecialchars($m['job_title'] ?: '—') ?></td>
+            <td>
+              <span class="badge <?= $m['employee_type']==='FTE'?'badge-blue':'badge-yellow' ?>">
+                <?= htmlspecialchars($m['employee_type'] ?: '—') ?>
+              </span>
+            </td>
+            <td>
+              <span class="badge <?= strtolower($m['status'])==='active'?'badge-green':'badge-red' ?>">
+                <?= ucfirst(htmlspecialchars($m['status'])) ?>
+              </span>
+            </td>
+            <td class="text-muted text-sm"><?= htmlspecialchars($m['phone'] ?: '—') ?></td>
+            <td class="text-muted text-sm"><?= htmlspecialchars($m['location'] ?: '—') ?></td>
+            <td class="text-muted text-sm"><?= $m['date_of_joining'] ? date('M d, Y', strtotime($m['date_of_joining'])) : '—' ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </div>
 
-    <div id="noResults" style="display:none;text-align:center;padding:48px 20px;color:var(--muted);font-size:13.5px;">
+    <div id="noResults" style="display:none;text-align:center;padding:40px;color:var(--muted);font-size:13.5px;">
       No members match your search.
     </div>
 
@@ -261,13 +232,12 @@ $firstName = explode(' ', $_SESSION['user_name'])[0];
 
 <script>
 function filterCards() {
-  const q     = document.getElementById('teamSearch').value.toLowerCase();
-  const cards = document.querySelectorAll('.member-card');
+  const q    = document.getElementById('teamSearch').value.toLowerCase();
+  const rows = document.querySelectorAll('.team-row');
   let visible = 0;
-  cards.forEach(card => {
-    const match = !q || card.dataset.name.includes(q) || card.dataset.title.includes(q)
-                     || card.textContent.toLowerCase().includes(q);
-    card.style.display = match ? '' : 'none';
+  rows.forEach(row => {
+    const match = !q || row.dataset.search.includes(q);
+    row.style.display = match ? '' : 'none';
     if (match) visible++;
   });
   const noRes = document.getElementById('noResults');
