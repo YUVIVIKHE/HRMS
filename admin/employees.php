@@ -10,66 +10,6 @@ $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg = $_SESSION['flash_error'] ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bulk_upload') {
-    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES['csv_file']['tmp_name'];
-        if (($handle = fopen($file, "r")) !== FALSE) {
-            $headers = fgetcsv($handle, 10000, ",");
-            if ($headers) {
-                // Get valid columns
-                $stmt = $db->query("SHOW COLUMNS FROM employees");
-                $validCols = $stmt->fetchAll(PDO::FETCH_COLUMN);
-                
-                // Map CSV headers to valid columns
-                $mappedCols = [];
-                foreach ($headers as $h) {
-                    $h = trim($h);
-                    $mappedCols[] = in_array($h, $validCols) ? $h : null;
-                }
-                
-                $successCount = 0;
-                $db->beginTransaction();
-                try {
-                    while (($data = fgetcsv($handle, 10000, ",")) !== FALSE) {
-                        $insertCols = [];
-                        $placeholders = [];
-                        $params = [];
-                        
-                        foreach ($data as $index => $val) {
-                            $colName = $mappedCols[$index] ?? null;
-                            if ($colName && $colName !== 'id' && $colName !== 'created_at') {
-                                $insertCols[] = "`$colName`";
-                                $placeholders[] = "?";
-                                $params[] = trim($val) === '' ? null : trim($val);
-                            }
-                        }
-                        
-                        if (!empty($insertCols)) {
-                            $sql = "INSERT INTO employees (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $placeholders) . ")";
-                            $db->prepare($sql)->execute($params);
-                            $successCount++;
-                        }
-                    }
-                    $db->commit();
-                    $_SESSION['flash_success'] = "$successCount employees imported successfully via bulk upload!";
-                } catch (Exception $e) {
-                    $db->rollBack();
-                    $_SESSION['flash_error'] = "Bulk upload failed: " . $e->getMessage();
-                }
-            } else {
-                $_SESSION['flash_error'] = "Invalid CSV format or empty file.";
-            }
-            fclose($handle);
-        } else {
-            $_SESSION['flash_error'] = "Could not read uploaded file.";
-        }
-    } else {
-        $_SESSION['flash_error'] = "File upload error.";
-    }
-    header("Location: employees.php");
-    exit;
-}
-
 $employees = $db->query("SELECT id, CONCAT(first_name, ' ', last_name) AS name, email, status, created_at FROM employees ORDER BY created_at DESC")->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -230,18 +170,10 @@ tr:last-child td {
 
     <div class="page-header">
         <h1>Employees</h1>
-        <div style="display:flex; gap: 12px; align-items:center;">
-            <a href="download_template.php" style="background:#f1f5f9; color:var(--text); border:1px solid var(--border); padding:8px 16px; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; transition:background 0.2s;">Download CSV Template</a>
-            <form method="POST" enctype="multipart/form-data" style="display:flex; gap:8px;" onsubmit="return confirm('Upload this CSV?');">
-                <input type="hidden" name="action" value="bulk_upload">
-                <input type="file" name="csv_file" accept=".csv" required style="font-size:0.85rem; border:1px solid var(--border); border-radius:6px; padding:6px; background:#fff">
-                <button type="submit" class="btn-primary" style="background:#16a34a; padding:8px 16px;">Upload CSV</button>
-            </form>
-            <a href="add_employee.php" class="btn-primary">
-                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                Add Employee
-            </a>
-        </div>
+        <a href="add_employee.php" class="btn-primary">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Add Employee
+        </a>
     </div>
 
     <div class="table-container">

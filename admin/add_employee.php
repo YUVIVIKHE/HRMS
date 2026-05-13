@@ -72,6 +72,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         header("Location: add_employee.php");
         exit;
+    } elseif ($action === 'bulk_upload') {
+        if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
+            $file = $_FILES['csv_file']['tmp_name'];
+            if (($handle = fopen($file, "r")) !== FALSE) {
+                $headers = fgetcsv($handle, 10000, ",");
+                if ($headers) {
+                    $mappedCols = [];
+                    foreach ($headers as $h) {
+                        $h = trim($h);
+                        $mappedCols[] = in_array($h, $allColumns) ? $h : null;
+                    }
+                    
+                    $successCount = 0;
+                    $db->beginTransaction();
+                    try {
+                        while (($data = fgetcsv($handle, 10000, ",")) !== FALSE) {
+                            $insertCols = [];
+                            $placeholders = [];
+                            $params = [];
+                            
+                            foreach ($data as $index => $val) {
+                                $colName = $mappedCols[$index] ?? null;
+                                if ($colName && $colName !== 'id' && $colName !== 'created_at') {
+                                    $insertCols[] = "`$colName`";
+                                    $placeholders[] = "?";
+                                    $params[] = trim($val) === '' ? null : trim($val);
+                                }
+                            }
+                            
+                            if (!empty($insertCols)) {
+                                $sql = "INSERT INTO employees (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $placeholders) . ")";
+                                $db->prepare($sql)->execute($params);
+                                $successCount++;
+                            }
+                        }
+                        $db->commit();
+                        $_SESSION['flash_success'] = "$successCount employees imported successfully via bulk upload!";
+                    } catch (Exception $e) {
+                        $db->rollBack();
+                        $_SESSION['flash_error'] = "Bulk upload failed: " . $e->getMessage();
+                    }
+                } else {
+                    $_SESSION['flash_error'] = "Invalid CSV format or empty file.";
+                }
+                fclose($handle);
+            } else {
+                $_SESSION['flash_error'] = "Could not read uploaded file.";
+            }
+        } else {
+            $_SESSION['flash_error'] = "File upload error.";
+        }
+        header("Location: add_employee.php");
+        exit;
     }
 }
 ?>
@@ -193,6 +246,14 @@ select.form-control { cursor: pointer; }
 <div class="main">
     <div class="page-header">
         <h1>Add New Employee</h1>
+        <div style="display:flex; gap: 12px; align-items:center;">
+            <a href="download_template.php" style="background:#f1f5f9; color:var(--text); border:1px solid var(--border); padding:8px 16px; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; transition:background 0.2s;">Download CSV Template</a>
+            <form method="POST" enctype="multipart/form-data" style="display:flex; gap:8px;" onsubmit="return confirm('Upload this CSV?');">
+                <input type="hidden" name="action" value="bulk_upload">
+                <input type="file" name="csv_file" accept=".csv" required style="font-size:0.85rem; border:1px solid var(--border); border-radius:6px; padding:6px; background:#fff">
+                <button type="submit" class="btn-primary" style="background:#16a34a; padding:8px 16px;">Bulk Import CSV</button>
+            </form>
+        </div>
     </div>
 
     <?php if ($successMsg): ?>
