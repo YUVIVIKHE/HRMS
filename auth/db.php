@@ -28,7 +28,17 @@ function getDB(): PDO {
             $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_general_ci");
             $pdo->exec("SET collation_connection = utf8mb4_general_ci");
             // Set MySQL session timezone to IST (+05:30)
-            $pdo->exec("SET time_zone = '+05:30'"  );
+            $pdo->exec("SET time_zone = '+05:30'");
+
+            // ── Deduplicate users immediately on connect ──────────────
+            // Remove stale employee row when a manager row exists for same email
+            $pdo->exec("
+                DELETE u1 FROM users u1
+                INNER JOIN users u2 ON u1.email = u2.email AND u1.id != u2.id
+                WHERE u1.role = 'employee' AND u2.role = 'manager'
+            ");
+            // Ensure UNIQUE on email
+            try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_locations` (
                   `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,

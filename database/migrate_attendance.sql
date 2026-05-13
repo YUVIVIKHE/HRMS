@@ -145,3 +145,14 @@ INNER JOIN users u2 ON u1.email = u2.email
 WHERE u1.role = 'employee'
   AND u2.role = 'manager'
   AND u1.id < u2.id;
+
+-- ── IMMEDIATE FIX: Remove duplicate users (employee+manager same email) ──
+-- Run this NOW in phpMyAdmin to fix existing duplicates
+-- Keeps the manager row, deletes the employee row for same email
+
+DELETE u1 FROM users u1
+INNER JOIN users u2 ON u1.email = u2.email AND u1.id != u2.id
+WHERE u1.role = 'employee' AND u2.role = 'manager';
+
+-- Ensure UNIQUE constraint exists on email
+ALTER TABLE `users` ADD UNIQUE KEY IF NOT EXISTS `uq_users_email` (`email`);
