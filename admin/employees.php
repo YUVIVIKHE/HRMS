@@ -178,44 +178,60 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
 
     <!-- Table -->
     <div class="table-wrap">
+      <!-- Selection action bar (hidden until rows selected) -->
+      <div id="selectionBar" style="display:none;background:var(--brand-light);border-bottom:1px solid #c7d2fe;padding:10px 20px;display:none;align-items:center;gap:12px;">
+        <span id="selCount" style="font-size:13px;font-weight:700;color:var(--brand);"></span>
+        <span style="font-size:13px;color:var(--muted);">employees selected</span>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="clearSelection()">Deselect All</button>
+          <button class="btn btn-sm" style="background:#16a34a;color:#fff;" onclick="exportSelected()">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Selected
+          </button>
+        </div>
+      </div>
+
       <div class="table-toolbar" style="flex-wrap:wrap;gap:10px;">
         <h2>All Employees <span id="empCount" style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($employees) ?>)</span></h2>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;">
-          <!-- Search -->
           <div class="search-box">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="empSearch" placeholder="Search…" oninput="filterTable()">
           </div>
-          <!-- Department filter -->
           <select id="filterDept" class="form-control" style="width:auto;min-width:160px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
             <option value="">All Departments</option>
             <?php foreach($deptList as $d): ?>
               <option value="<?= htmlspecialchars($d['name']) ?>"><?= htmlspecialchars($d['name']) ?></option>
             <?php endforeach; ?>
           </select>
-          <!-- Type filter -->
           <select id="filterType" class="form-control" style="width:auto;min-width:130px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
             <option value="">All Types</option>
             <option value="FTE">FTE</option>
             <option value="External">External</option>
           </select>
-          <!-- Status filter -->
           <select id="filterStatus" class="form-control" style="width:auto;min-width:120px;font-size:13px;padding:7px 12px;" onchange="filterTable()">
             <option value="">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
             <option value="terminated">Terminated</option>
           </select>
-          <!-- Clear -->
           <button class="btn btn-ghost btn-sm" onclick="clearFilters()" id="clearBtn" style="display:none;">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             Clear
           </button>
+          <a href="export_employees.php?mode=all" class="btn btn-secondary btn-sm">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export All
+          </a>
         </div>
       </div>
+
       <table id="empTable">
         <thead>
           <tr>
+            <th style="width:40px;padding-left:18px;">
+              <input type="checkbox" id="selectAll" style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;" onchange="toggleAll(this)">
+            </th>
             <th>Employee</th>
             <th>Department</th>
             <th>Job Title</th>
@@ -227,13 +243,18 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
         </thead>
         <tbody>
           <?php if(empty($employees)): ?>
-            <tr class="empty-row"><td colspan="7">No employees found. <a href="add_employee.php" style="color:var(--brand)">Add your first employee →</a></td></tr>
+            <tr class="empty-row"><td colspan="8">No employees found. <a href="add_employee.php" style="color:var(--brand)">Add your first employee →</a></td></tr>
           <?php else: foreach($employees as $emp):
             $fullName = htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']);
           ?>
           <tr data-dept="<?= htmlspecialchars($departments[$emp['department_id']] ?? '') ?>"
               data-type="<?= htmlspecialchars($emp['employee_type'] ?? '') ?>"
               data-status="<?= htmlspecialchars(strtolower($emp['status'] ?? '')) ?>">
+            <td style="padding-left:18px;">
+              <input type="checkbox" class="row-check" value="<?= $emp['id'] ?>"
+                style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;"
+                onchange="updateSelection()">
+            </td>
             <td>
               <div class="td-user">
                 <div class="td-avatar"><?= strtoupper(substr($emp['first_name'],0,1)) ?></div>
@@ -299,6 +320,7 @@ $deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetch
 </div>
 
 <script>
+// ── Filter ──
 function filterTable() {
   const q      = document.getElementById('empSearch').value.toLowerCase();
   const dept   = document.getElementById('filterDept').value;
@@ -320,29 +342,79 @@ function filterTable() {
   document.getElementById('empCount').textContent = '(' + visible + ')';
   document.getElementById('clearBtn').style.display =
     (q || dept || type || status) ? 'inline-flex' : 'none';
+
+  // Uncheck hidden rows
+  document.querySelectorAll('#empTable tbody tr:not(.empty-row)').forEach(row => {
+    if (row.style.display === 'none') {
+      const cb = row.querySelector('.row-check');
+      if (cb) cb.checked = false;
+    }
+  });
+  updateSelection();
 }
 
 function clearFilters() {
-  document.getElementById('empSearch').value  = '';
-  document.getElementById('filterDept').value = '';
-  document.getElementById('filterType').value = '';
+  document.getElementById('empSearch').value    = '';
+  document.getElementById('filterDept').value   = '';
+  document.getElementById('filterType').value   = '';
   document.getElementById('filterStatus').value = '';
   filterTable();
 }
 
+// ── Checkboxes ──
+function toggleAll(master) {
+  document.querySelectorAll('#empTable tbody tr:not(.empty-row)').forEach(row => {
+    if (row.style.display !== 'none') {
+      const cb = row.querySelector('.row-check');
+      if (cb) cb.checked = master.checked;
+    }
+  });
+  updateSelection();
+}
+
+function updateSelection() {
+  const checked = document.querySelectorAll('.row-check:checked');
+  const bar     = document.getElementById('selectionBar');
+  const count   = document.getElementById('selCount');
+
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    count.textContent = checked.length;
+  } else {
+    bar.style.display = 'none';
+  }
+
+  // Update select-all indeterminate state
+  const all     = document.querySelectorAll('.row-check');
+  const visible = [...all].filter(cb => cb.closest('tr').style.display !== 'none');
+  const master  = document.getElementById('selectAll');
+  const checkedVisible = visible.filter(cb => cb.checked);
+  master.indeterminate = checkedVisible.length > 0 && checkedVisible.length < visible.length;
+  master.checked = checkedVisible.length === visible.length && visible.length > 0;
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = false);
+  document.getElementById('selectAll').checked = false;
+  updateSelection();
+}
+
+function exportSelected() {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => cb.value);
+  if (ids.length === 0) return;
+  window.location.href = 'export_employees.php?mode=selected&ids=' + ids.join(',');
+}
+
 // ── Delete Modal ──
 function openDelete(id, name) {
-  document.getElementById('del_id').value  = id;
+  document.getElementById('del_id').value = id;
   document.getElementById('delMsg').textContent =
     'This will permanently remove ' + name + ' and all their data. This cannot be undone.';
   document.getElementById('delModal').classList.add('open');
 }
-
 function closeDelete() {
   document.getElementById('delModal').classList.remove('open');
 }
-
-// Close delete modal on backdrop click
 document.getElementById('delModal').addEventListener('click', function(e) {
   if (e.target === this) closeDelete();
 });
