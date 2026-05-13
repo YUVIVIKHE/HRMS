@@ -278,6 +278,26 @@ function showToast(msg, color) {
   t.textContent = msg; t.style.background = color || '#111827'; t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 4000);
 }
+
+// ── Regularization modal ──
+function openRegModal(date, dateLabel, clockIn, clockOut) {
+  document.getElementById('regDate').value      = date;
+  document.getElementById('regDateLabel').textContent = dateLabel;
+  document.getElementById('regClockIn').value   = clockIn;
+  document.getElementById('regClockOut').value  = clockOut;
+  document.getElementById('regModal').classList.add('open');
+}
+document.getElementById('regModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('regModal'))
+    document.getElementById('regModal').classList.remove('open');
+});
+function validateReg() {
+  const ci = document.getElementById('regClockIn').value;
+  const co = document.getElementById('regClockOut').value;
+  if (!ci || !co) { alert('Please enter both clock in and clock out times.'); return false; }
+  if (ci >= co)   { alert('Clock out must be after clock in.'); return false; }
+  return true;
+}
 </script>
 </body>
 </html>
