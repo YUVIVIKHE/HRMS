@@ -8,6 +8,49 @@ $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
+// ── Handle POST actions ──────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+
+    if ($action === 'delete_employee') {
+        $id = (int)($_POST['employee_id'] ?? 0);
+        if ($id > 0) {
+            try {
+                $db->prepare("DELETE FROM employees WHERE id = ?")->execute([$id]);
+                $_SESSION['flash_success'] = "Employee deleted successfully.";
+            } catch (PDOException $e) {
+                $_SESSION['flash_error'] = "Delete failed: " . $e->getMessage();
+            }
+        }
+        header("Location: employees.php"); exit;
+    }
+
+    if ($action === 'edit_employee') {
+        $id = (int)($_POST['employee_id'] ?? 0);
+        if ($id > 0) {
+            try {
+                $fields = ['first_name','last_name','email','phone','job_title',
+                           'department_id','employee_type','status','date_of_joining',
+                           'direct_manager_name','location','gross_salary'];
+                $sets   = [];
+                $params = [];
+                foreach ($fields as $f) {
+                    $sets[]   = "`$f` = ?";
+                    $val      = trim($_POST[$f] ?? '');
+                    $params[] = ($val === '') ? null : $val;
+                }
+                $params[] = $id;
+                $db->prepare("UPDATE employees SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+                $_SESSION['flash_success'] = "Employee updated successfully.";
+            } catch (PDOException $e) {
+                $_SESSION['flash_error'] = "Update failed: " . $e->getMessage();
+            }
+        }
+        header("Location: employees.php"); exit;
+    }
+}
+
+// ── Data ─────────────────────────────────────────────────────
 $stats = $db->query("
     SELECT
         COUNT(*) as total,
@@ -17,10 +60,16 @@ $stats = $db->query("
     FROM employees
 ")->fetch(PDO::FETCH_ASSOC);
 
-$employees = $db->query("SELECT id, CONCAT(first_name,' ',last_name) AS name, email, job_title, department_id, status, employee_type, created_at FROM employees ORDER BY created_at DESC")->fetchAll();
+$employees = $db->query("
+    SELECT id, first_name, last_name, email, phone, job_title,
+           department_id, status, employee_type, date_of_joining,
+           direct_manager_name, location, gross_salary, created_at
+    FROM employees ORDER BY created_at DESC
+")->fetchAll();
 
-$deptRows = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_KEY_PAIR);
+$deptRows    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_KEY_PAIR);
 $departments = $deptRows ?: [];
+$deptList    = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -30,6 +79,88 @@ $departments = $deptRows ?: [];
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
+<style>
+/* ── Edit Drawer ── */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(17,24,39,.4);
+  backdrop-filter: blur(2px);
+  z-index: 400;
+  display: none;
+}
+.drawer-overlay.open { display: block; }
+
+.drawer {
+  position: fixed; top: 0; right: -520px;
+  width: 500px; height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0,0,0,.12);
+  z-index: 500;
+  display: flex; flex-direction: column;
+  transition: right .28s cubic-bezier(.4,0,.2,1);
+  overflow: hidden;
+}
+.drawer.open { right: 0; }
+
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.drawer-header h3 { font-size: 15px; font-weight: 700; color: var(--text); }
+.drawer-header p  { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.drawer-close {
+  width: 32px; height: 32px;
+  border: none; background: var(--surface-2);
+  border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); transition: background .15s;
+}
+.drawer-close:hover { background: var(--border); color: var(--text); }
+.drawer-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+.drawer-body {
+  flex: 1; overflow-y: auto;
+  padding: 24px;
+}
+.drawer-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-light);
+  display: flex; justify-content: flex-end; gap: 10px;
+  flex-shrink: 0;
+}
+
+/* ── Delete confirm modal ── */
+.del-modal {
+  position: fixed; inset: 0;
+  background: rgba(17,24,39,.5);
+  backdrop-filter: blur(3px);
+  z-index: 600;
+  display: none; align-items: center; justify-content: center;
+}
+.del-modal.open { display: flex; }
+.del-box {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  width: 100%; max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.del-icon {
+  width: 52px; height: 52px;
+  background: var(--red-bg);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.del-icon svg { width: 24px; height: 24px; stroke: var(--red); fill: none; stroke-width: 2; }
+.del-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.del-box p  { font-size: 13.5px; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
+.del-actions { display: flex; gap: 10px; justify-content: center; }
+</style>
 </head>
 <body>
 <div class="app-shell">
@@ -51,16 +182,10 @@ $departments = $deptRows ?: [];
   <div class="page-body">
 
     <?php if($successMsg): ?>
-      <div class="alert alert-success">
-        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-        <?= htmlspecialchars($successMsg) ?>
-      </div>
+      <div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div>
     <?php endif; ?>
     <?php if($errorMsg): ?>
-      <div class="alert alert-error">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <?= htmlspecialchars($errorMsg) ?>
-      </div>
+      <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
     <?php endif; ?>
 
     <div class="page-header">
@@ -82,37 +207,25 @@ $departments = $deptRows ?: [];
         <div class="stat-icon" style="background:#eef2ff;color:var(--brand)">
           <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
-        <div class="stat-body">
-          <div class="stat-value"><?= $stats['total'] ?? 0 ?></div>
-          <div class="stat-label">Total</div>
-        </div>
+        <div class="stat-body"><div class="stat-value"><?= $stats['total'] ?? 0 ?></div><div class="stat-label">Total</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--green-bg);color:var(--green)">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         </div>
-        <div class="stat-body">
-          <div class="stat-value"><?= $stats['active'] ?? 0 ?></div>
-          <div class="stat-label">Active</div>
-        </div>
+        <div class="stat-body"><div class="stat-value"><?= $stats['active'] ?? 0 ?></div><div class="stat-label">Active</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--blue-bg);color:var(--blue)">
           <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
         </div>
-        <div class="stat-body">
-          <div class="stat-value"><?= $stats['fte'] ?? 0 ?></div>
-          <div class="stat-label">FTE</div>
-        </div>
+        <div class="stat-body"><div class="stat-value"><?= $stats['fte'] ?? 0 ?></div><div class="stat-label">FTE</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--yellow-bg);color:var(--yellow)">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
-        <div class="stat-body">
-          <div class="stat-value"><?= $stats['external'] ?? 0 ?></div>
-          <div class="stat-label">External</div>
-        </div>
+        <div class="stat-body"><div class="stat-value"><?= $stats['external'] ?? 0 ?></div><div class="stat-label">External</div></div>
       </div>
     </div>
 
@@ -134,19 +247,21 @@ $departments = $deptRows ?: [];
             <th>Type</th>
             <th>Status</th>
             <th>Joined</th>
-            <th></th>
+            <th style="width:120px;"></th>
           </tr>
         </thead>
         <tbody>
           <?php if(empty($employees)): ?>
-            <tr class="empty-row"><td colspan="6">No employees found. <a href="add_employee.php" style="color:var(--brand)">Add your first employee →</a></td></tr>
-          <?php else: foreach($employees as $emp): ?>
+            <tr class="empty-row"><td colspan="7">No employees found. <a href="add_employee.php" style="color:var(--brand)">Add your first employee →</a></td></tr>
+          <?php else: foreach($employees as $emp):
+            $fullName = htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']);
+          ?>
           <tr>
             <td>
               <div class="td-user">
-                <div class="td-avatar"><?= strtoupper(substr($emp['name'],0,1)) ?></div>
+                <div class="td-avatar"><?= strtoupper(substr($emp['first_name'],0,1)) ?></div>
                 <div>
-                  <div class="td-name"><?= htmlspecialchars($emp['name']) ?></div>
+                  <div class="td-name"><?= $fullName ?></div>
                   <div class="td-sub"><?= htmlspecialchars($emp['email']) ?></div>
                 </div>
               </div>
@@ -163,9 +278,20 @@ $departments = $deptRows ?: [];
                 <?= htmlspecialchars(ucfirst($emp['status'])) ?>
               </span>
             </td>
-            <td class="text-muted text-sm"><?= date('M d, Y', strtotime($emp['created_at'])) ?></td>
+            <td class="text-muted text-sm"><?= $emp['date_of_joining'] ? date('M d, Y', strtotime($emp['date_of_joining'])) : date('M d, Y', strtotime($emp['created_at'])) ?></td>
             <td>
-              <a href="#" class="btn btn-ghost btn-sm">Edit</a>
+              <div style="display:flex;gap:6px;">
+                <button type="button" class="btn btn-ghost btn-sm"
+                  onclick="openEdit(<?= htmlspecialchars(json_encode($emp), ENT_QUOTES) ?>)">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit
+                </button>
+                <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;"
+                  onclick="openDelete(<?= $emp['id'] ?>, '<?= addslashes($emp['first_name'].' '.$emp['last_name']) ?>')">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  Delete
+                </button>
+              </div>
             </td>
           </tr>
           <?php endforeach; endif; ?>
@@ -177,13 +303,148 @@ $departments = $deptRows ?: [];
 </div>
 </div>
 
+<!-- ── Edit Drawer ── -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeEdit()"></div>
+<div class="drawer" id="editDrawer">
+  <div class="drawer-header">
+    <div>
+      <h3>Edit Employee</h3>
+      <p id="drawerSubtitle">Update employee details</p>
+    </div>
+    <button class="drawer-close" onclick="closeEdit()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form method="POST" id="editForm">
+    <input type="hidden" name="action" value="edit_employee">
+    <input type="hidden" name="employee_id" id="edit_id">
+    <div class="drawer-body">
+
+      <div class="form-section-title">Personal</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="form-group"><label>First Name <span class="req">*</span></label><input type="text" name="first_name" id="edit_first_name" class="form-control" required></div>
+        <div class="form-group"><label>Last Name <span class="req">*</span></label><input type="text" name="last_name" id="edit_last_name" class="form-control" required></div>
+      </div>
+      <div class="form-group" style="margin-top:14px;"><label>Work Email <span class="req">*</span></label><input type="email" name="email" id="edit_email" class="form-control" required></div>
+      <div class="form-group" style="margin-top:14px;"><label>Phone</label><input type="text" name="phone" id="edit_phone" class="form-control"></div>
+
+      <div class="form-section-title" style="margin-top:24px;">Employment</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:0;">
+        <div class="form-group"><label>Job Title</label><input type="text" name="job_title" id="edit_job_title" class="form-control"></div>
+        <div class="form-group"><label>Department</label>
+          <select name="department_id" id="edit_department_id" class="form-control">
+            <option value="">— None —</option>
+            <?php foreach($deptList as $d): ?>
+              <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-group"><label>Employee Type</label>
+          <select name="employee_type" id="edit_employee_type" class="form-control">
+            <option value="FTE">FTE</option>
+            <option value="External">External</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Status</label>
+          <select name="status" id="edit_status" class="form-control">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="terminated">Terminated</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Date of Joining</label><input type="date" name="date_of_joining" id="edit_date_of_joining" class="form-control"></div>
+        <div class="form-group"><label>Direct Manager</label><input type="text" name="direct_manager_name" id="edit_direct_manager_name" class="form-control"></div>
+      </div>
+
+      <div class="form-section-title" style="margin-top:24px;">Other</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:0;">
+        <div class="form-group"><label>Location</label><input type="text" name="location" id="edit_location" class="form-control"></div>
+        <div class="form-group"><label>Gross Salary</label><input type="number" step="0.01" name="gross_salary" id="edit_gross_salary" class="form-control"></div>
+      </div>
+
+    </div>
+    <div class="drawer-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeEdit()">Cancel</button>
+      <button type="submit" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Save Changes
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- ── Delete Confirm Modal ── -->
+<div class="del-modal" id="delModal">
+  <div class="del-box">
+    <div class="del-icon">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </div>
+    <h3>Delete Employee?</h3>
+    <p id="delMsg">This will permanently remove the employee and all their data. This action cannot be undone.</p>
+    <div class="del-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeDelete()">Cancel</button>
+      <form method="POST" style="display:inline;">
+        <input type="hidden" name="action" value="delete_employee">
+        <input type="hidden" name="employee_id" id="del_id">
+        <button type="submit" class="btn btn-danger">Yes, Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
+// ── Search ──
 function filterTable() {
   const q = document.getElementById('empSearch').value.toLowerCase();
   document.querySelectorAll('#empTable tbody tr:not(.empty-row)').forEach(row => {
     row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
+
+// ── Edit Drawer ──
+function openEdit(emp) {
+  document.getElementById('edit_id').value              = emp.id;
+  document.getElementById('edit_first_name').value      = emp.first_name || '';
+  document.getElementById('edit_last_name').value       = emp.last_name  || '';
+  document.getElementById('edit_email').value           = emp.email      || '';
+  document.getElementById('edit_phone').value           = emp.phone      || '';
+  document.getElementById('edit_job_title').value       = emp.job_title  || '';
+  document.getElementById('edit_department_id').value   = emp.department_id || '';
+  document.getElementById('edit_employee_type').value   = emp.employee_type || 'FTE';
+  document.getElementById('edit_status').value          = emp.status     || 'active';
+  document.getElementById('edit_date_of_joining').value = emp.date_of_joining || '';
+  document.getElementById('edit_direct_manager_name').value = emp.direct_manager_name || '';
+  document.getElementById('edit_location').value        = emp.location   || '';
+  document.getElementById('edit_gross_salary').value    = emp.gross_salary || '';
+  document.getElementById('drawerSubtitle').textContent = emp.first_name + ' ' + emp.last_name;
+
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('editDrawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEdit() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('editDrawer').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ── Delete Modal ──
+function openDelete(id, name) {
+  document.getElementById('del_id').value  = id;
+  document.getElementById('delMsg').textContent =
+    'This will permanently remove ' + name + ' and all their data. This cannot be undone.';
+  document.getElementById('delModal').classList.add('open');
+}
+
+function closeDelete() {
+  document.getElementById('delModal').classList.remove('open');
+}
+
+// Close delete modal on backdrop click
+document.getElementById('delModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDelete();
+});
 </script>
 </body>
 </html>
