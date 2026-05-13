@@ -345,47 +345,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Bulk Upload -->
     <div id="view-bulk" style="display:none;">
 
-      <!-- Step cards -->
+      <!-- Steps -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
-        <div class="card" style="text-align:center;padding:24px 20px;">
+        <div class="card" style="padding:24px 20px;text-align:center;">
           <div style="width:40px;height:40px;background:var(--brand-light);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--brand);font-size:18px;font-weight:800;">1</div>
           <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Download Template</div>
-          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Get the CSV with all columns including your custom fields and a sample row.</p>
-          <a href="download_template.php" class="btn btn-secondary btn-sm" style="margin-top:14px;">
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:14px;">Get the CSV with all columns including custom fields and a sample row.</p>
+          <a href="download_template.php" class="btn btn-secondary btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download CSV
           </a>
         </div>
-        <div class="card" style="text-align:center;padding:24px 20px;">
+        <div class="card" style="padding:24px 20px;text-align:center;">
           <div style="width:40px;height:40px;background:#d1fae5;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#059669;font-size:18px;font-weight:800;">2</div>
           <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Fill in Data</div>
-          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Fill employee rows. Delete the sample row before uploading. Keep column headers unchanged.</p>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Fill employee rows. Remove the sample row before uploading. Keep headers unchanged.</p>
         </div>
-        <div class="card" style="text-align:center;padding:24px 20px;">
+        <div class="card" style="padding:24px 20px;text-align:center;">
           <div style="width:40px;height:40px;background:var(--yellow-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--yellow);font-size:18px;font-weight:800;">3</div>
           <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Upload & Import</div>
-          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Upload the filled CSV. Valid rows are imported; rows with errors are skipped and reported.</p>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Upload the filled CSV. Valid rows import; rows with errors are skipped and reported.</p>
         </div>
       </div>
 
       <!-- Upload form -->
-      <div class="card">
+      <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
             <h2>Upload CSV File</h2>
-            <p>Only .csv files accepted. Max file size depends on your server's upload_max_filesize setting.</p>
+            <p>Only .csv files accepted. Max size depends on your server's upload_max_filesize.</p>
           </div>
         </div>
         <div class="card-body">
           <form method="POST" enctype="multipart/form-data" id="bulkForm">
             <input type="hidden" name="action" value="bulk_upload">
-            <div style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:40px;text-align:center;background:var(--surface-2);cursor:pointer;" onclick="document.getElementById('csv_file').click();" id="dropZone">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="margin:0 auto 12px;display:block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+            <div id="dropZone" onclick="document.getElementById('csv_file').click();"
+              style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:48px 20px;text-align:center;background:var(--surface-2);cursor:pointer;transition:all .2s;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="display:block;margin:0 auto 14px;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9 15 12 12 15 15"/>
+              </svg>
               <div id="dropLabel" style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">Click to select a CSV file</div>
               <div style="font-size:12px;color:var(--muted-light);">or drag and drop here</div>
               <input type="file" id="csv_file" name="csv_file" accept=".csv" required style="display:none;" onchange="onFileSelect(this)">
             </div>
-            <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+            <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
               <a href="download_template.php" class="btn btn-secondary">
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Download Template
@@ -400,81 +406,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
 
       <!-- Field reference -->
-      <div class="card" style="margin-top:16px;">
-        <div class="card-header"><div><h2>Field Reference</h2><p>Accepted values for key columns</p></div></div>
+      <div class="card">
+        <div class="card-header">
+          <div><h2>Field Reference</h2><p>Accepted values for key columns</p></div>
+        </div>
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">department</div>
-              <div style="font-size:12px;color:var(--muted);line-height:1.7;">
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">department</div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;">
                 <?php foreach($deptList as $d): ?>
-                  <span style="display:inline-block;background:#f3f4f6;border-radius:4px;padding:1px 7px;margin:2px 2px 2px 0;font-family:monospace;"><?= htmlspecialchars($d['name']) ?></span>
+                  <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);"><?= htmlspecialchars($d['name']) ?></span>
                 <?php endforeach; ?>
               </div>
             </div>
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">employee_type</div>
-              <div style="font-size:12px;color:var(--muted);">
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">FTE</span>
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">External</span>
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">employee_type</div>
+              <div style="display:flex;gap:4px;">
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">FTE</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">External</span>
               </div>
             </div>
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">status</div>
-              <div style="font-size:12px;color:var(--muted);">
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">active</span>
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">inactive</span>
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">terminated</span>
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">status</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">active</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">inactive</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">terminated</span>
               </div>
             </div>
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">gender</div>
-              <div style="font-size:12px;color:var(--muted);">
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Male</span>
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Female</span>
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Other</span>
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">gender</div>
+              <div style="display:flex;gap:4px;">
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">Male</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">Female</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">Other</span>
               </div>
             </div>
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">date fields</div>
-              <div style="font-size:12px;color:var(--muted);">Format: <span style="font-family:monospace;">YYYY-MM-DD</span> e.g. <span style="font-family:monospace;">2024-01-15</span></div>
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">date fields</div>
+              <div style="font-size:12px;color:var(--muted);">Format: <code style="background:#f3f4f6;border-radius:4px;padding:2px 6px;">YYYY-MM-DD</code><br>e.g. <code style="background:#f3f4f6;border-radius:4px;padding:2px 6px;">2024-01-15</code></div>
             </div>
             <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
-              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">exempt_from_tax</div>
-              <div style="font-size:12px;color:var(--muted);">
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">0</span> = No &nbsp;
-                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">1</span> = Yes
+              <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em;">exempt_from_tax</div>
+              <div style="display:flex;gap:4px;align-items:center;">
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">0</span><span style="font-size:12px;color:var(--muted);">= No</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace;color:var(--text-2);">1</span><span style="font-size:12px;color:var(--muted);">= Yes</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-    </div>
-      <div class="card">
-        <div class="card-body" style="text-align:center;padding:60px 40px;">
-          <div style="width:56px;height:56px;background:var(--brand-light);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
-          </div>
-          <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">Bulk Upload Employees</h2>
-          <p style="color:var(--muted);max-width:480px;margin:0 auto 32px;line-height:1.6;font-size:13.5px;">Download the CSV template matching your current schema, fill it out, and upload to create multiple records at once.</p>
-          <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;align-items:center;">
-            <a href="download_template.php" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download Template
-            </a>
-            <form method="POST" enctype="multipart/form-data" style="display:flex;align-items:center;gap:10px;" onsubmit="return confirm('Import this CSV?')">
-              <input type="hidden" name="action" value="bulk_upload">
-              <input type="file" name="csv_file" accept=".csv" required style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);cursor:pointer;">
-              <button type="submit" class="btn btn-success">
-                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Import CSV
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
+    </div><!-- /view-bulk -->
 
   </div>
 </div>
