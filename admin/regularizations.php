@@ -173,11 +173,11 @@ $statusMap = ['pending'=>'badge-yellow','approved'=>'badge-green','rejected'=>'b
       </div>
       <table id="regTable">
         <thead>
-          <tr><th>Employee</th><th>Role</th><th>Manager</th><th>Date</th><th>Req. In</th><th>Req. Out</th><th>Reason</th><th>Submitted</th><th>Status</th><th style="width:160px;"></th></tr>
+          <tr><th>Employee</th><th>Role</th><th>Date</th><th>Req. In</th><th>Req. Out</th><th>Reason</th><th>Status</th><th style="width:160px;"></th></tr>
         </thead>
         <tbody>
           <?php if(empty($regs)): ?>
-            <tr class="empty-row"><td colspan="10">No regularization requests found.</td></tr>
+            <tr class="empty-row"><td colspan="8">No regularization requests found.</td></tr>
           <?php else: foreach($regs as $r):
             $isEsc = $r['escalated'] && $r['status']==='pending';
           ?>
@@ -188,17 +188,16 @@ $statusMap = ['pending'=>'badge-yellow','approved'=>'badge-green','rejected'=>'b
                 <div>
                   <div class="td-name"><?= htmlspecialchars($r['emp_name']) ?></div>
                   <div class="td-sub"><?= htmlspecialchars($r['emp_email']) ?></div>
+                  <?php if($r['manager_name']): ?><div class="td-sub">Mgr: <?= htmlspecialchars($r['manager_name']) ?></div><?php endif; ?>
                 </div>
               </div>
               <?php if($isEsc): ?><div><span class="badge badge-yellow" style="font-size:10px;margin-top:3px;">⚠ Escalated</span></div><?php endif; ?>
             </td>
             <td><span class="badge <?= $r['emp_role']==='manager'?'badge-brand':'badge-gray' ?>"><?= ucfirst($r['emp_role']) ?></span></td>
-            <td class="text-muted text-sm"><?= htmlspecialchars($r['manager_name'] ?? '—') ?></td>
             <td class="font-semibold text-sm"><?= date('D, d M Y', strtotime($r['log_date'])) ?></td>
             <td class="text-sm"><?= date('h:i A', strtotime($r['req_clock_in'])) ?></td>
             <td class="text-sm"><?= date('h:i A', strtotime($r['req_clock_out'])) ?></td>
             <td class="text-muted text-sm" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($r['reason']) ?>"><?= htmlspecialchars($r['reason']) ?></td>
-            <td class="text-muted text-sm"><?= date('d M Y', strtotime($r['created_at'])) ?></td>
             <td><span class="badge <?= $statusMap[$r['status']]??'badge-gray' ?>"><?= ucfirst($r['status']) ?></span></td>
             <td>
               <?php if($r['status']==='pending'): ?>

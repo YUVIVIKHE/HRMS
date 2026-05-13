@@ -32,10 +32,25 @@
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         Leave Requests
       </a>
-      <a href="regularizations.php" class="<?= $mp==='regularizations.php'?'active':'' ?>">
-        <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Regularizations
+      <!-- Regularizations with sub-menu -->
+      <?php $regPages = ['regularizations.php','my_regularizations.php']; $regOpen = in_array($mp,$regPages); ?>
+      <a href="#" class="has-sub <?= $regOpen?'open':'' ?>" onclick="toggleSub('regSub',this);return false;">
+        <span style="display:flex;align-items:center;gap:10px;">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Regularizations
+        </span>
+        <svg class="sub-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </a>
+      <div class="sidebar-submenu <?= $regOpen?'open':'' ?>" id="regSub">
+        <a href="regularizations.php" class="<?= $mp==='regularizations.php'?'active':'' ?>">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          Team Requests
+        </a>
+        <a href="my_regularizations.php" class="<?= $mp==='my_regularizations.php'?'active':'' ?>">
+          <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          My Requests
+        </a>
+      </div>
       <a href="attendance.php" class="<?= $mp==='attendance.php'?'active':'' ?>">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Attendance
@@ -64,3 +79,18 @@
     </a>
   </div>
 </aside>
+
+<script>
+function toggleSub(id, el) {
+  const sub = document.getElementById(id);
+  const isOpen = sub.classList.toggle('open');
+  el.classList.toggle('open', isOpen);
+}
+// Auto-open sub if current page is inside it
+document.querySelectorAll('.sidebar-submenu').forEach(sub => {
+  if (sub.querySelector('a.active')) {
+    sub.classList.add('open');
+    sub.previousElementSibling?.classList.add('open');
+  }
+});
+</script>
