@@ -54,10 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Normalise CSV headers — strip UTF-8 BOM, whitespace, \r
                     $csvHeaders = array_map(function($h) {
-                        $h = trim($h);
-                        $h = ltrim($h, "\xEF\xBB\xBF"); // strip UTF-8 BOM from first cell
+                        $h = str_replace("\xEF\xBB\xBF", '', $h); // strip UTF-8 BOM (any position)
                         $h = trim($h, "\r\n\t ");
-                        return strtolower($h);           // lowercase for case-insensitive match
+                        return strtolower($h); // lowercase for case-insensitive match
                     }, $csvHeaders);
 
                     $successCount = 0;
