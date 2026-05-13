@@ -128,6 +128,10 @@ nav{flex:1;padding:24px 0;overflow-y:auto}
 nav a{display:flex;align-items:center;gap:12px;padding:12px 28px;font-size:.95rem;font-weight:500;color:var(--muted);text-decoration:none;border-left:3px solid transparent;transition:all .2s ease}
 nav a:hover, nav a.active{background:#f1f5f9;color:#4f46e5;border-left-color:#4f46e5}
 nav a svg{width:20px;height:20px;flex-shrink:0}
+.s-foot{padding:24px 28px;border-top:1px solid var(--border); margin-top: auto;}
+.s-foot a{display:flex;align-items:center;justify-content:flex-start;gap:10px;color:#ef4444;font-size:.9rem;font-weight:600;text-decoration:none;padding:12px 16px;border-radius:10px;background:#fef2f2;transition:all .2s ease}
+.s-foot a:hover{background:#fee2e2}
+.s-foot a svg{width:20px;height:20px;flex-shrink:0}
 
 .main{margin-left:var(--sidebar);flex:1;display:flex;flex-direction:column;padding:40px 60px}
 
