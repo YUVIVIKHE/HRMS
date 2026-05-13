@@ -13,7 +13,7 @@ define('DB_CHARSET', 'utf8mb4');
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
+        $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -21,7 +21,9 @@ function getDB(): PDO {
         ];
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-            // Auto-create attendance tables if they don't exist
+            // Force consistent collation for the session to avoid collation mismatch errors
+            $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_general_ci");
+            $pdo->exec("SET collation_connection = utf8mb4_general_ci");
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_locations` (
                   `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,

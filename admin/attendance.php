@@ -58,8 +58,10 @@ try {
     if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
 
     $stmt = $db->prepare("
-        SELECT al.*, u.name COLLATE utf8mb4_general_ci AS user_name, u.role AS user_role,
-               loc.name COLLATE utf8mb4_general_ci AS location_name
+        SELECT al.*, 
+               u.name AS user_name, 
+               u.role AS user_role,
+               loc.name AS location_name
         FROM attendance_logs al
         JOIN users u ON al.user_id = u.id
         LEFT JOIN attendance_locations loc ON al.location_id = loc.id
