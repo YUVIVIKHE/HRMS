@@ -16,9 +16,70 @@ unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = $_POST['action'] ?? '';
 
+    // ── Promote to Manager ──────────────────────────────────
+    if ($postAction === 'promote_to_manager') {
+        $empData = $db->prepare("SELECT e.*, d.name AS dept_name FROM employees e LEFT JOIN departments d ON e.department_id = d.id WHERE e.id = ?");
+        $empData->execute([$id]);
+        $empData = $empData->fetch();
+
+        if ($empData) {
+            // 1. Update users table role to manager
+            $updated = $db->prepare("UPDATE users SET role = 'manager' WHERE email = ?");
+            $updated->execute([$empData['email']]);
+
+            if ($updated->rowCount() === 0) {
+                // No user account yet — create one as manager
+                require_once __DIR__ . '/../auth/mailer.php';
+                $plain  = generatePassword(10);
+                $db->prepare("INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'manager', 'active')")
+                   ->execute([
+                       trim($empData['first_name'].' '.$empData['last_name']),
+                       $empData['email'],
+                       password_hash($plain, PASSWORD_BCRYPT)
+                   ]);
+            }
+
+            // 2. Get the new manager's user id
+            $managerUser = $db->prepare("SELECT id FROM users WHERE email = ?");
+            $managerUser->execute([$empData['email']]);
+            $managerUserId = $managerUser->fetchColumn();
+
+            // 3. Assign all employees in the same department to this manager
+            //    (only those whose manager_id is NULL or not yet set)
+            if ($empData['department_id'] && $managerUserId) {
+                // Find user accounts for employees in same dept (excluding the manager themselves)
+                $deptEmps = $db->prepare("
+                    SELECT u.id FROM users u
+                    INNER JOIN employees e ON u.email = e.email
+                    WHERE e.department_id = ? AND u.role = 'employee' AND u.email != ?
+                ");
+                $deptEmps->execute([$empData['department_id'], $empData['email']]);
+                $deptEmpIds = $deptEmps->fetchAll(PDO::FETCH_COLUMN);
+
+                if (!empty($deptEmpIds)) {
+                    $placeholders = implode(',', array_fill(0, count($deptEmpIds), '?'));
+                    $params = array_merge([$managerUserId], $deptEmpIds);
+                    $db->prepare("UPDATE users SET manager_id = ? WHERE id IN ($placeholders)")->execute($params);
+                }
+            }
+
+            // 4. Send congratulation email
+            require_once __DIR__ . '/../auth/mailer.php';
+            $sent = sendPromotionEmail(
+                $empData['email'],
+                trim($empData['first_name'].' '.$empData['last_name']),
+                $empData['dept_name'] ?? ''
+            );
+
+            $_SESSION['flash_success'] = trim($empData['first_name'].' '.$empData['last_name'])
+                . " has been promoted to Manager."
+                . ($sent ? " Congratulation email sent." : " (Email delivery failed.)");
+        }
+        header("Location: edit_employee.php?id=$id"); exit;
+    }
+
     // Resend / create login account
-    if ($postAction === 'provision_user') {
-        $empData = $db->prepare("SELECT email, first_name, last_name FROM employees WHERE id = ?");
+    if ($postAction === 'provision_user') {        $empData = $db->prepare("SELECT email, first_name, last_name FROM employees WHERE id = ?");
         $empData->execute([$id]);
         $empData = $empData->fetch();
         if ($empData) {
@@ -86,9 +147,11 @@ $deptList = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll
 $fullName = htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']);
 
 // Check if login account exists
-$hasAccount = $db->prepare("SELECT id FROM users WHERE email = ?");
+$hasAccount = $db->prepare("SELECT id, role FROM users WHERE email = ?");
 $hasAccount->execute([$emp['email']]);
-$hasAccount = (bool)$hasAccount->fetch();
+$userRow    = $hasAccount->fetch();
+$hasAccount = (bool)$userRow;
+$isManager  = $userRow && $userRow['role'] === 'manager';
 
 // Helper: field value
 function val($emp, $key) { return htmlspecialchars($emp[$key] ?? ''); }
@@ -140,23 +203,38 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
       <div>
         <div style="font-size:17px;font-weight:800;color:var(--text);"><?= $fullName ?></div>
         <div style="font-size:13px;color:var(--muted);margin-top:2px;"><?= val($emp,'email') ?> <?= $emp['employee_id'] ? '· '.$emp['employee_id'] : '' ?></div>
-        <div style="margin-top:6px;">
-          <?php if($hasAccount): ?>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+          <?php if($isManager): ?>
+            <span class="badge badge-brand">Manager</span>
+          <?php elseif($hasAccount): ?>
             <span class="badge badge-green">Login Account Active</span>
           <?php else: ?>
             <span class="badge badge-red">No Login Account</span>
           <?php endif; ?>
         </div>
       </div>
-      <div style="margin-left:auto;display:flex;gap:10px;">
-        <form method="POST" style="display:inline;" onsubmit="return confirm('This will reset the password and send a new login email to <?= htmlspecialchars($emp['email']) ?>. Continue?')">
+      <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+        <?php if(!$isManager): ?>
+        <form method="POST" style="display:inline;"
+          onsubmit="return confirm('Promote <?= addslashes($emp['first_name'].' '.$emp['last_name']) ?> to Manager?\n\nThey will get manager access and all employees in their department will be assigned to their team. A congratulation email will be sent.')">
+          <input type="hidden" name="action" value="promote_to_manager">
+          <button type="submit" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Promote to Manager
+          </button>
+        </form>
+        <?php else: ?>
+          <span style="font-size:13px;color:var(--muted);align-self:center;">Already a Manager</span>
+        <?php endif; ?>
+        <form method="POST" style="display:inline;"
+          onsubmit="return confirm('This will <?= $hasAccount ? 'reset the password and send' : 'create an account and send' ?> a login email to <?= htmlspecialchars($emp['email']) ?>. Continue?')">
           <input type="hidden" name="action" value="provision_user">
           <button type="submit" class="btn btn-secondary">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Send Login Credentials
+            <?= $hasAccount ? 'Resend Credentials' : 'Send Login Credentials' ?>
           </button>
         </form>
-        <a href="employees.php" class="btn btn-secondary">← Back to List</a>
+        <a href="employees.php" class="btn btn-secondary">← Back</a>
       </div>
     </div>
 
