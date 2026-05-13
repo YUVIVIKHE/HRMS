@@ -2,103 +2,65 @@
 require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
 guardRole('admin');
-
 $db = getDB();
 
 $successMsg = $_SESSION['flash_success'] ?? '';
-$errorMsg = $_SESSION['flash_error'] ?? '';
+$errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-// Base columns from our schema
-$baseColumns = ['id', 'first_name', 'last_name', 'email', 'phone', 'job_title', 'date_of_birth', 'gender', 'marital_status', 'employee_id', 'department_id', 'employee_type', 'date_of_joining', 'date_of_exit', 'date_of_confirmation', 'direct_manager_name', 'location', 'base_location', 'user_code', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'permanent_address_line1', 'permanent_address_line2', 'permanent_city', 'permanent_state', 'permanent_zip_code', 'account_type', 'account_number', 'ifsc_code', 'pan', 'aadhar_no', 'uan_number', 'pf_account_number', 'employee_provident_fund', 'professional_tax', 'esi_number', 'exempt_from_tax', 'passport_no', 'place_of_issue', 'passport_date_of_issue', 'passport_date_of_expiry', 'place_of_birth', 'nationality', 'blood_group', 'personal_email', 'emergency_contact_no', 'country_code_phone', 'status', 'created_at', 'gross_salary'];
+$baseColumns = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
 
 $stmt = $db->query("SHOW FULL COLUMNS FROM employees");
 $allColumnsFull = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-
     if ($action === 'add_custom_field') {
         try {
             $label = trim($_POST['field_label']);
-            $fieldName = preg_replace('/[^a-z0-9_]/', '_', strtolower($label));
-            $fieldType = $_POST['field_type'] === 'date' ? 'DATE' : 'VARCHAR(255)';
-            $isRequired = isset($_POST['is_required']) ? true : false;
-            
-            // Generate comment metadata
-            $meta = json_encode(['required' => $isRequired, 'label' => $label]);
-            
-            $existingCols = array_column($allColumnsFull, 'Field');
-            if (!empty($fieldName) && !in_array($fieldName, $existingCols)) {
-                // To avoid breaking existing rows in strict mode, we don't set NOT NULL constraint at the DB level,
-                // instead we enforce it via the UI using the metadata inside COMMENT.
+            $fieldName = preg_replace('/[^a-z0-9_]/','_',strtolower($label));
+            $fieldType = $_POST['field_type']==='date' ? 'DATE' : 'VARCHAR(255)';
+            $isRequired = isset($_POST['is_required']);
+            $meta = json_encode(['required'=>$isRequired,'label'=>$label]);
+            $existingCols = array_column($allColumnsFull,'Field');
+            if (!empty($fieldName) && !in_array($fieldName,$existingCols)) {
                 $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL COMMENT '$meta'");
-                $_SESSION['flash_success'] = "Custom field '$label' added successfully!";
-            } else {
-                $_SESSION['flash_error'] = "Invalid field name or field already exists.";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['flash_error'] = "Error adding custom field: " . $e->getMessage();
-        }
-        header("Location: custom_fields.php");
-        exit;
+                $_SESSION['flash_success'] = "Custom field '$label' added.";
+            } else { $_SESSION['flash_error'] = "Invalid name or field already exists."; }
+        } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
+        header("Location: custom_fields.php"); exit;
     } elseif ($action === 'delete_custom_field') {
         try {
             $fieldName = $_POST['field_name'];
-            $existingCols = array_column($allColumnsFull, 'Field');
-            if (!in_array($fieldName, $baseColumns) && in_array($fieldName, $existingCols)) {
+            $existingCols = array_column($allColumnsFull,'Field');
+            if (!in_array($fieldName,$baseColumns) && in_array($fieldName,$existingCols)) {
                 $db->exec("ALTER TABLE employees DROP COLUMN `$fieldName`");
-                $_SESSION['flash_success'] = "Custom field deleted successfully!";
-            } else {
-                $_SESSION['flash_error'] = "Cannot delete core system field.";
-            }
-        } catch (PDOException $e) {
-            $_SESSION['flash_error'] = "Error deleting field: " . $e->getMessage();
-        }
-        header("Location: custom_fields.php");
-        exit;
+                $_SESSION['flash_success'] = "Field deleted.";
+            } else { $_SESSION['flash_error'] = "Cannot delete a core field."; }
+        } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
+        header("Location: custom_fields.php"); exit;
     } elseif ($action === 'edit_custom_field') {
         try {
             $oldName = $_POST['old_field_name'];
             $label = trim($_POST['field_label']);
-            $isRequired = isset($_POST['is_required']) ? true : false;
-            
-            // Find current type
+            $isRequired = isset($_POST['is_required']);
             $currentType = 'VARCHAR(255)';
-            foreach ($allColumnsFull as $c) {
-                if ($c['Field'] === $oldName) {
-                    $currentType = $c['Type'];
-                    break;
-                }
-            }
-            
-            $meta = json_encode(['required' => $isRequired, 'label' => $label]);
+            foreach ($allColumnsFull as $c) { if ($c['Field']===$oldName) { $currentType=$c['Type']; break; } }
+            $meta = json_encode(['required'=>$isRequired,'label'=>$label]);
             $db->exec("ALTER TABLE employees MODIFY COLUMN `$oldName` $currentType DEFAULT NULL COMMENT '$meta'");
-            $_SESSION['flash_success'] = "Custom field updated successfully!";
-        } catch (PDOException $e) {
-            $_SESSION['flash_error'] = "Error updating field: " . $e->getMessage();
-        }
-        header("Location: custom_fields.php");
-        exit;
+            $_SESSION['flash_success'] = "Field updated.";
+        } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
+        header("Location: custom_fields.php"); exit;
     }
 }
 
-// Re-fetch columns to reflect recent changes
 $stmt = $db->query("SHOW FULL COLUMNS FROM employees");
 $allColumnsFull = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 $customCols = [];
 foreach ($allColumnsFull as $col) {
-    if (!in_array($col['Field'], $baseColumns)) {
-        $meta = json_decode($col['Comment'], true);
-        if (!$meta) {
-            $meta = ['required' => false, 'label' => ucwords(str_replace('_', ' ', $col['Field']))];
-        }
-        $customCols[] = [
-            'field' => $col['Field'],
-            'type' => $col['Type'],
-            'meta' => $meta
-        ];
+    if (!in_array($col['Field'],$baseColumns)) {
+        $meta = json_decode($col['Comment'],true) ?: ['required'=>false,'label'=>ucwords(str_replace('_',' ',$col['Field']))];
+        $customCols[] = ['field'=>$col['Field'],'type'=>$col['Type'],'meta'=>$meta];
     }
 }
 ?>
@@ -107,164 +69,170 @@ foreach ($allColumnsFull as $col) {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Custom Fields – HRMS Portal</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<style>
-
-
-
-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-th { text-align: left; padding: 12px 16px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border-bottom: 1px solid var(--border); }
-td { padding: 16px; font-size: 0.95rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-
-.badge { padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: #f1f5f9; color: var(--muted); }
-.badge-required { background: #fee2e2; color: #991b1b; }
-
-.action-btn { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 0.85rem; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; }
-.action-btn:hover { background: #f1f5f9; }
-.action-btn.delete { color: #ef4444; }
-.action-btn.delete:hover { background: #fef2f2; }
-
-/* Modal */
-.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000; }
-.modal-overlay.active { display: flex; }
-.modal { background: white; padding: 32px; border-radius: 12px; width: 100%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-
+<div class="app-shell">
 <?php include __DIR__ . '/sidebar.php'; ?>
+<div class="main-content">
 
-<div class="main">
-    <div class="header-card">
-        <div class="header-bg"></div>
-        <div style="position:relative; z-index:2;">
-            <div style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; opacity:0.8; margin-bottom:8px;">EMPLOYEE MANAGEMENT</div>
-            <h1 style="font-size:2.2rem; font-weight:800; margin-bottom:12px; letter-spacing:-0.5px;">Custom Fields</h1>
-            <p style="font-size:1rem; opacity:0.9; max-width:600px; line-height:1.6;">Define extra fields — Blood Group, Emergency Contact, Shirt Size, or anything else — that appear dynamically on every Employee and Manager profile form.</p>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="page-title">Custom Fields</span>
+      <span class="page-breadcrumb">Employee Schema Configuration</span>
+    </div>
+    <div class="topbar-right">
+      <span class="role-chip">Admin</span>
+      <div class="topbar-avatar"><?= strtoupper(substr($_SESSION['user_name'],0,1)) ?></div>
+      <span class="topbar-name"><?= htmlspecialchars($_SESSION['user_name']) ?></span>
+    </div>
+  </header>
+
+  <div class="page-body">
+
+    <?php if($successMsg): ?>
+      <div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div>
+    <?php endif; ?>
+    <?php if($errorMsg): ?>
+      <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
+    <?php endif; ?>
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Custom Fields</h1>
+        <p>Extend employee profiles with additional fields that appear on all forms dynamically.</p>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start;">
+
+      <!-- Add Field Card -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Add New Field</h2>
+            <p>Fields appear on employee forms immediately</p>
+          </div>
         </div>
-    </div>
-
-    <?php if ($successMsg): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($successMsg) ?></div>
-    <?php endif; ?>
-    <?php if ($errorMsg): ?>
-        <div class="alert alert-error"><?= htmlspecialchars($errorMsg) ?></div>
-    <?php endif; ?>
-
-    <div class="card">
-        <h2 style="font-size:1.2rem; font-weight:800; margin-bottom:4px; color:var(--text);">Add Custom Field</h2>
-        <p style="font-size:0.9rem; color:var(--muted); margin-bottom:24px; padding-bottom:24px; border-bottom:1px solid var(--border);">Fields are saved globally and appear on employee/manager profile forms immediately.</p>
-
-        <form method="POST">
+        <div class="card-body">
+          <form method="POST">
             <input type="hidden" name="action" value="add_custom_field">
-            <div class="form-group" style="margin-bottom:20px;">
-                <label>Field Label <span style="color:#ef4444">*</span></label>
-                <input type="text" name="field_label" class="form-control" placeholder="e.g. Blood Group, Emergency Contact, Shirt Size" required>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Field Label <span class="req">*</span></label>
+              <input type="text" name="field_label" class="form-control" placeholder="e.g. Blood Group, Shirt Size" required>
             </div>
-            
-            <div style="display:flex; gap:20px; margin-bottom:24px;">
-                <div class="form-group" style="flex:1;">
-                    <label>Field Type</label>
-                    <select name="field_type" class="form-control">
-                        <option value="text">Text (short)</option>
-                        <option value="date">Date</option>
-                    </select>
-                </div>
+            <div class="form-group" style="margin-bottom:16px;">
+              <label>Field Type</label>
+              <select name="field_type" class="form-control">
+                <option value="text">Text</option>
+                <option value="date">Date</option>
+              </select>
             </div>
-
-            <div style="margin-bottom:32px; display:flex; align-items:center; gap:10px;">
-                <input type="checkbox" name="is_required" id="is_required" style="width:18px; height:18px; accent-color:var(--accent); cursor:pointer;">
-                <label for="is_required" style="font-weight:600; font-size:0.9rem; cursor:pointer;">Mark as Required</label>
+            <div class="form-check" style="margin-bottom:20px;">
+              <input type="checkbox" name="is_required" id="is_required">
+              <label for="is_required">Mark as Required</label>
             </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Field
+            </button>
+          </form>
+        </div>
+      </div>
 
-            <button type="submit" class="btn btn-primary">+ Add Field</button>
-        </form>
-    </div>
-
-    <div class="card">
-        <h2 style="font-size:1.2rem; font-weight:800; margin-bottom:16px;">Active Custom Fields</h2>
+      <!-- Active Fields Table -->
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <h2>Active Custom Fields <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($customCols) ?>)</span></h2>
+        </div>
         <table>
-            <thead>
-                <tr>
-                    <th>Field Label</th>
-                    <th>Database Column</th>
-                    <th>Required</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if(empty($customCols)): ?>
-                    <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--muted);">No custom fields added yet.</td></tr>
-                <?php else: foreach($customCols as $col): 
-                    $meta = $col['meta'];
-                ?>
-                    <tr>
-                        <td style="font-weight:600; color:var(--text);"><?= htmlspecialchars($meta['label']) ?></td>
-                        <td style="font-family:monospace; color:var(--muted);"><?= htmlspecialchars($col['field']) ?></td>
-                        <td>
-                            <?php if(!empty($meta['required'])): ?>
-                                <span class="badge badge-required">Required</span>
-                            <?php else: ?>
-                                <span class="badge">Optional</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <button type="button" class="action-btn" onclick="openEditModal('<?= htmlspecialchars($col['field']) ?>', '<?= htmlspecialchars(addslashes($meta['label'])) ?>', <?= !empty($meta['required']) ? 'true' : 'false' ?>)">Edit</button>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to completely delete this field and all data associated with it?');">
-                                <input type="hidden" name="action" value="delete_custom_field">
-                                <input type="hidden" name="field_name" value="<?= htmlspecialchars($col['field']) ?>">
-                                <button type="submit" class="action-btn delete">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endforeach; endif; ?>
-            </tbody>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Column Name</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if(empty($customCols)): ?>
+              <tr class="empty-row"><td colspan="5">No custom fields yet. Add one to get started.</td></tr>
+            <?php else: foreach($customCols as $col): $meta=$col['meta']; ?>
+            <tr>
+              <td class="font-semibold"><?= htmlspecialchars($meta['label']) ?></td>
+              <td><code style="font-size:12px;background:var(--surface-2);padding:2px 7px;border-radius:5px;color:var(--muted);"><?= htmlspecialchars($col['field']) ?></code></td>
+              <td class="text-muted text-sm"><?= htmlspecialchars($col['type']) ?></td>
+              <td>
+                <?php if(!empty($meta['required'])): ?>
+                  <span class="badge badge-red">Required</span>
+                <?php else: ?>
+                  <span class="badge badge-gray">Optional</span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="openEdit('<?= htmlspecialchars($col['field']) ?>','<?= htmlspecialchars(addslashes($meta['label'])) ?>',<?= !empty($meta['required'])?'true':'false' ?>)">Edit</button>
+                  <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this field and all its data?')">
+                    <input type="hidden" name="action" value="delete_custom_field">
+                    <input type="hidden" name="field_name" value="<?= htmlspecialchars($col['field']) ?>">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <?php endforeach; endif; ?>
+          </tbody>
         </table>
+      </div>
+
     </div>
+  </div>
+</div>
 </div>
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="editModal">
-    <div class="modal">
-        <h2 style="font-size:1.2rem; font-weight:800; margin-bottom:24px;">Edit Custom Field</h2>
-        <form method="POST">
-            <input type="hidden" name="action" value="edit_custom_field">
-            <input type="hidden" name="old_field_name" id="edit_old_field_name">
-            
-            <div class="form-group" style="margin-bottom:20px;">
-                <label>Field Label <span style="color:#ef4444">*</span></label>
-                <input type="text" name="field_label" id="edit_field_label" class="form-control" required>
-            </div>
-            
-
-
-            <div style="margin-bottom:32px; display:flex; align-items:center; gap:10px;">
-                <input type="checkbox" name="is_required" id="edit_is_required" style="width:18px; height:18px; accent-color:var(--accent); cursor:pointer;">
-                <label for="edit_is_required" style="font-weight:600; font-size:0.9rem; cursor:pointer;">Mark as Required</label>
-            </div>
-
-            <div style="display:flex; justify-content:flex-end; gap:12px;">
-                <button type="button" class="btn" style="background:#f1f5f9; color:var(--text);" onclick="closeEditModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-            </div>
-        </form>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Custom Field</h3>
+      <button class="modal-close" onclick="closeEdit()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
+    <form method="POST">
+      <div class="modal-body">
+        <input type="hidden" name="action" value="edit_custom_field">
+        <input type="hidden" name="old_field_name" id="edit_field_name">
+        <div class="form-group" style="margin-bottom:16px;">
+          <label>Field Label <span class="req">*</span></label>
+          <input type="text" name="field_label" id="edit_label" class="form-control" required>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" name="is_required" id="edit_required">
+          <label for="edit_required">Mark as Required</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeEdit()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script>
-function openEditModal(fieldName, label, isRequired) {
-    document.getElementById('edit_old_field_name').value = fieldName;
-    document.getElementById('edit_field_label').value = label;
-    document.getElementById('edit_is_required').checked = isRequired;
-    document.getElementById('editModal').classList.add('active');
+function openEdit(field, label, required) {
+  document.getElementById('edit_field_name').value = field;
+  document.getElementById('edit_label').value = label;
+  document.getElementById('edit_required').checked = required;
+  document.getElementById('editModal').classList.add('open');
 }
-
-function closeEditModal() {
-    document.getElementById('editModal').classList.remove('active');
+function closeEdit() {
+  document.getElementById('editModal').classList.remove('open');
 }
 </script>
-
 </body>
 </html>

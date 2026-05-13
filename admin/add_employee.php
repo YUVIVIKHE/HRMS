@@ -2,113 +2,67 @@
 require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
 guardRole('admin');
-
 $db = getDB();
 
-// Handle flashed messages
 $successMsg = $_SESSION['flash_success'] ?? '';
-$errorMsg = $_SESSION['flash_error'] ?? '';
+$errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-// Get existing columns
 $stmt = $db->query("SHOW COLUMNS FROM employees");
 $allColumns = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-$baseColumns = ['id', 'first_name', 'last_name', 'email', 'phone', 'job_title', 'date_of_birth', 'gender', 'marital_status', 'employee_id', 'department_id', 'employee_type', 'date_of_joining', 'date_of_exit', 'date_of_confirmation', 'direct_manager_name', 'location', 'base_location', 'user_code', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'permanent_address_line1', 'permanent_address_line2', 'permanent_city', 'permanent_state', 'permanent_zip_code', 'account_type', 'account_number', 'ifsc_code', 'pan', 'aadhar_no', 'uan_number', 'pf_account_number', 'employee_provident_fund', 'professional_tax', 'esi_number', 'exempt_from_tax', 'passport_no', 'place_of_issue', 'passport_date_of_issue', 'passport_date_of_expiry', 'place_of_birth', 'nationality', 'blood_group', 'personal_email', 'emergency_contact_no', 'country_code_phone', 'status', 'created_at', 'gross_salary'];
+$baseColumns = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
 $customColumns = array_diff($allColumns, $baseColumns);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-
     if ($action === 'save_employee') {
         try {
-            $insertCols = [];
-            $placeholders = [];
-            $params = [];
-            
+            $insertCols = []; $placeholders = []; $params = [];
             foreach ($allColumns as $col) {
                 if ($col === 'id' || $col === 'created_at') continue;
-                
                 if (isset($_POST[$col])) {
-                    $insertCols[] = "`$col`";
-                    $placeholders[] = "?";
+                    $insertCols[] = "`$col`"; $placeholders[] = "?";
                     $val = trim($_POST[$col]);
                     $params[] = ($val === '') ? null : $val;
                 } elseif ($col === 'exempt_from_tax') {
-                    $insertCols[] = "`$col`";
-                    $placeholders[] = "?";
+                    $insertCols[] = "`$col`"; $placeholders[] = "?";
                     $params[] = isset($_POST['exempt_from_tax']) ? 1 : 0;
                 }
             }
-            
             if (!empty($insertCols)) {
-                $sql = "INSERT INTO employees (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $placeholders) . ")";
-                $stmt = $db->prepare($sql);
-                $stmt->execute($params);
-                $_SESSION['flash_success'] = "Employee profile saved successfully!";
-                header("Location: employees.php");
-                exit;
-            } else {
-                $_SESSION['flash_error'] = "No data submitted.";
+                $db->prepare("INSERT INTO employees (".implode(',',$insertCols).") VALUES (".implode(',',$placeholders).")")->execute($params);
+                $_SESSION['flash_success'] = "Employee added successfully.";
+                header("Location: employees.php"); exit;
             }
         } catch (PDOException $e) {
-            $_SESSION['flash_error'] = "Error adding employee: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Error: " . $e->getMessage();
         }
-        header("Location: add_employee.php");
-        exit;
+        header("Location: add_employee.php"); exit;
     } elseif ($action === 'bulk_upload') {
         if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['csv_file']['tmp_name'];
-            if (($handle = fopen($file, "r")) !== FALSE) {
-                $headers = fgetcsv($handle, 10000, ",");
+            if (($handle = fopen($file,"r")) !== FALSE) {
+                $headers = fgetcsv($handle,10000,",");
                 if ($headers) {
-                    $mappedCols = [];
-                    foreach ($headers as $h) {
-                        $h = trim($h);
-                        $mappedCols[] = in_array($h, $allColumns) ? $h : null;
-                    }
-                    
-                    $successCount = 0;
-                    $db->beginTransaction();
+                    $mappedCols = array_map(fn($h) => in_array(trim($h),$allColumns)?trim($h):null, $headers);
+                    $count = 0; $db->beginTransaction();
                     try {
-                        while (($data = fgetcsv($handle, 10000, ",")) !== FALSE) {
-                            $insertCols = [];
-                            $placeholders = [];
-                            $params = [];
-                            
-                            foreach ($data as $index => $val) {
-                                $colName = $mappedCols[$index] ?? null;
-                                if ($colName && $colName !== 'id' && $colName !== 'created_at') {
-                                    $insertCols[] = "`$colName`";
-                                    $placeholders[] = "?";
-                                    $params[] = trim($val) === '' ? null : trim($val);
-                                }
+                        while (($data = fgetcsv($handle,10000,",")) !== FALSE) {
+                            $ic=[]; $ph=[]; $pr=[];
+                            foreach ($data as $i => $val) {
+                                $c = $mappedCols[$i] ?? null;
+                                if ($c && $c!=='id' && $c!=='created_at') { $ic[]="`$c`"; $ph[]="?"; $pr[]=trim($val)===''?null:trim($val); }
                             }
-                            
-                            if (!empty($insertCols)) {
-                                $sql = "INSERT INTO employees (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $placeholders) . ")";
-                                $db->prepare($sql)->execute($params);
-                                $successCount++;
-                            }
+                            if (!empty($ic)) { $db->prepare("INSERT INTO employees (".implode(',',$ic).") VALUES (".implode(',',$ph).")")->execute($pr); $count++; }
                         }
                         $db->commit();
-                        $_SESSION['flash_success'] = "$successCount employees imported successfully via bulk upload!";
-                    } catch (Exception $e) {
-                        $db->rollBack();
-                        $_SESSION['flash_error'] = "Bulk upload failed: " . $e->getMessage();
-                    }
-                } else {
-                    $_SESSION['flash_error'] = "Invalid CSV format or empty file.";
-                }
+                        $_SESSION['flash_success'] = "$count employees imported.";
+                    } catch (Exception $e) { $db->rollBack(); $_SESSION['flash_error'] = "Import failed: ".$e->getMessage(); }
+                } else { $_SESSION['flash_error'] = "Invalid CSV."; }
                 fclose($handle);
-            } else {
-                $_SESSION['flash_error'] = "Could not read uploaded file.";
             }
-        } else {
-            $_SESSION['flash_error'] = "File upload error.";
-        }
-        header("Location: add_employee.php");
-        exit;
+        } else { $_SESSION['flash_error'] = "Upload error."; }
+        header("Location: add_employee.php"); exit;
     }
 }
 ?>
@@ -117,232 +71,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Add Employee – HRMS Portal</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<style>
-.tab-btn {
-    padding: 16px 24px;
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--muted);
-    background: transparent;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.2s;
-}
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active {
-    color: #1d4ed8;
-    border-bottom-color: #1d4ed8;
-}
-
-
-.form-container {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 32px;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    margin-bottom: 32px;
-}
-
-.custom-field-panel {
-    background: #f0fdf4;
-    border: 1px dashed #4ade80;
-    padding: 24px;
-    border-radius: 12px;
-    margin-bottom: 24px;
-    display: flex;
-    gap: 16px;
-    align-items: flex-end;
-}
-
-.section-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-    margin-top: 32px;
-}
-.section-title:first-child { margin-top: 0; }
-
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 20px;
-}
-
-.form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.form-group label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
-.form-control {
-    padding: 10px 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-family: inherit;
-    background: #f8fafc;
-    transition: all 0.2s;
-    width: 100%;
-}
-.form-control:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
-select.form-control { cursor: pointer; }
-
-.form-actions {
-    margin-top: 40px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 16px;
-    border-top: 1px solid var(--border);
-    padding-top: 24px;
-}
-
-.btn { padding: 10px 24px; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.2s; text-decoration: none; border: none; display: inline-block; }
-.btn-secondary { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); }
-.btn-secondary:hover { background: #e2e8f0; }
-.btn-primary { background: var(--accent); color: white; }
-.btn-primary:hover { background: #4338ca; }
-.btn-success { background: #22c55e; color: white; }
-.btn-success:hover { background: #16a34a; }
-
-.alert { padding: 16px; border-radius: 8px; margin-bottom: 24px; font-weight: 500; font-size: 0.95rem; }
-.alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-
-.checkbox-group { flex-direction: row; align-items: center; gap: 8px; margin-top: 28px; }
-.checkbox-group input { width: 18px; height: 18px; accent-color: var(--accent); }
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
-
+<div class="app-shell">
 <?php include __DIR__ . '/sidebar.php'; ?>
+<div class="main-content">
 
-<div class="main">
-    <div class="header-card" style="margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0;">
-        <div class="header-bg"></div>
-        <div style="position:relative; z-index:2; max-width: 700px;">
-            <div style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; opacity:0.8; margin-bottom:8px; text-transform:uppercase;">EMPLOYEE ONBOARDING</div>
-            <h1 style="font-size:2.2rem; font-weight:800; margin-bottom:12px; letter-spacing:-0.5px;">Add New Employee</h1>
-            <p style="font-size:1rem; opacity:0.9; line-height:1.6;">Fill in employee profile details in a structured form, or switch to bulk upload to onboard multiple employees at once.</p>
-        </div>
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="page-title">Add Employee</span>
+      <span class="page-breadcrumb"><a href="employees.php" style="color:var(--muted);text-decoration:none;">Employees</a> / New</span>
     </div>
-
-    <div style="background: var(--surface); border: 1px solid var(--border); border-top: none; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; display: flex; padding: 0 16px; margin-bottom: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-        <button id="tab-single" class="tab-btn active" onclick="switchTab('single')">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Single Add
-        </button>
-        <button id="tab-bulk" class="tab-btn" onclick="switchTab('bulk')">
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
-            Bulk Upload
-        </button>
+    <div class="topbar-right">
+      <span class="role-chip">Admin</span>
+      <div class="topbar-avatar"><?= strtoupper(substr($_SESSION['user_name'],0,1)) ?></div>
+      <span class="topbar-name"><?= htmlspecialchars($_SESSION['user_name']) ?></span>
     </div>
+  </header>
 
-    <?php if ($successMsg): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($successMsg) ?></div>
+  <div class="page-body">
+
+    <?php if($successMsg): ?>
+      <div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div>
     <?php endif; ?>
-    <?php if ($errorMsg): ?>
-        <div class="alert alert-error"><?= htmlspecialchars($errorMsg) ?></div>
+    <?php if($errorMsg): ?>
+      <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
     <?php endif; ?>
 
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>New Employee</h1>
+        <p>Fill in the profile details or use bulk upload to onboard multiple employees at once.</p>
+      </div>
+    </div>
 
+    <!-- Tabs -->
+    <div class="tabs">
+      <button id="tab-single" class="tab-btn active" onclick="switchTab('single')">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Single Entry
+      </button>
+      <button id="tab-bulk" class="tab-btn" onclick="switchTab('bulk')">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+        Bulk Upload
+      </button>
+    </div>
+
+    <!-- Single Entry Form -->
     <div id="view-single">
-    <form class="form-container" method="POST">
-        <input type="hidden" name="action" value="save_employee">
-        
-        <?php if (!empty($customColumns)): ?>
-            <div class="section-title" style="color:var(--accent);">Custom Fields</div>
-            <div class="form-grid">
-                <?php foreach ($customColumns as $col): ?>
-                    <div class="form-group">
-                        <label><?= htmlspecialchars(ucwords(str_replace('_', ' ', $col))) ?></label>
-                        <input type="text" name="<?= htmlspecialchars($col) ?>" class="form-control">
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
+    <form method="POST">
+      <input type="hidden" name="action" value="save_employee">
 
-        <!-- Basic Info -->
-        <div class="section-title">Personal Information</div>
-        <div class="form-grid">
-            <div class="form-group"><label>First Name *</label><input type="text" name="first_name" class="form-control" required></div>
-            <div class="form-group"><label>Last Name *</label><input type="text" name="last_name" class="form-control" required></div>
-            <div class="form-group"><label>Work Email *</label><input type="email" name="email" class="form-control" required></div>
+      <?php if(!empty($customColumns)): ?>
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <div>
+            <h2>Custom Fields</h2>
+            <p>Fields defined in your Custom Fields settings</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <?php foreach($customColumns as $col): ?>
+            <div class="form-group">
+              <label><?= htmlspecialchars(ucwords(str_replace('_',' ',$col))) ?></label>
+              <input type="text" name="<?= htmlspecialchars($col) ?>" class="form-control">
+            </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><div><h2>Personal Information</h2></div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group"><label>First Name <span class="req">*</span></label><input type="text" name="first_name" class="form-control" required></div>
+            <div class="form-group"><label>Last Name <span class="req">*</span></label><input type="text" name="last_name" class="form-control" required></div>
+            <div class="form-group"><label>Work Email <span class="req">*</span></label><input type="email" name="email" class="form-control" required></div>
             <div class="form-group"><label>Personal Email</label><input type="email" name="personal_email" class="form-control"></div>
             <div class="form-group"><label>Phone</label><input type="text" name="phone" class="form-control"></div>
             <div class="form-group"><label>Date of Birth</label><input type="date" name="date_of_birth" class="form-control"></div>
-            <div class="form-group">
-                <label>Gender</label>
-                <select name="gender" class="form-control">
-                    <option value="">Select</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
-                </select>
+            <div class="form-group"><label>Gender</label>
+              <select name="gender" class="form-control"><option value="">Select</option><option>Male</option><option>Female</option><option>Other</option></select>
             </div>
-            <div class="form-group">
-                <label>Marital Status</label>
-                <select name="marital_status" class="form-control">
-                    <option value="">Select</option><option value="Single">Single</option><option value="Married">Married</option><option value="Divorced">Divorced</option><option value="Widowed">Widowed</option>
-                </select>
+            <div class="form-group"><label>Marital Status</label>
+              <select name="marital_status" class="form-control"><option value="">Select</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option></select>
             </div>
             <div class="form-group"><label>Blood Group</label><input type="text" name="blood_group" class="form-control"></div>
             <div class="form-group"><label>Nationality</label><input type="text" name="nationality" class="form-control"></div>
             <div class="form-group"><label>Place of Birth</label><input type="text" name="place_of_birth" class="form-control"></div>
-            <div class="form-group"><label>Emergency Contact No</label><input type="text" name="emergency_contact_no" class="form-control"></div>
+            <div class="form-group"><label>Emergency Contact</label><input type="text" name="emergency_contact_no" class="form-control"></div>
+          </div>
         </div>
+      </div>
 
-        <!-- Employment Details -->
-        <div class="section-title">Employment Details</div>
-        <div class="form-grid">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><div><h2>Employment Details</h2></div></div>
+        <div class="card-body">
+          <div class="form-grid">
             <div class="form-group"><label>Employee ID</label><input type="text" name="employee_id" class="form-control"></div>
             <div class="form-group"><label>User Code</label><input type="text" name="user_code" class="form-control"></div>
             <div class="form-group"><label>Job Title</label><input type="text" name="job_title" class="form-control"></div>
             <div class="form-group"><label>Department ID</label><input type="number" name="department_id" class="form-control"></div>
-            <div class="form-group">
-                <label>Employee Type</label>
-                <select name="employee_type" class="form-control" required><option value="FTE">FTE</option><option value="External">External</option></select>
+            <div class="form-group"><label>Employee Type</label>
+              <select name="employee_type" class="form-control"><option value="FTE">FTE</option><option value="External">External</option></select>
             </div>
             <div class="form-group"><label>Date of Joining</label><input type="date" name="date_of_joining" class="form-control"></div>
             <div class="form-group"><label>Date of Confirmation</label><input type="date" name="date_of_confirmation" class="form-control"></div>
-            <div class="form-group"><label>Direct Manager Name</label><input type="text" name="direct_manager_name" class="form-control"></div>
+            <div class="form-group"><label>Direct Manager</label><input type="text" name="direct_manager_name" class="form-control"></div>
             <div class="form-group"><label>Location</label><input type="text" name="location" class="form-control"></div>
             <div class="form-group"><label>Base Location</label><input type="text" name="base_location" class="form-control"></div>
-            <div class="form-group">
-                <label>Status</label>
-                <select name="status" class="form-control"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="Terminated">Terminated</option></select>
+            <div class="form-group"><label>Status</label>
+              <select name="status" class="form-control"><option value="active">Active</option><option value="inactive">Inactive</option><option value="terminated">Terminated</option></select>
             </div>
+          </div>
         </div>
+      </div>
 
-        <!-- Address -->
-        <div class="section-title">Current Address</div>
-        <div class="form-grid">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><div><h2>Address</h2></div></div>
+        <div class="card-body">
+          <div class="form-section-title">Current Address</div>
+          <div class="form-grid">
             <div class="form-group"><label>Address Line 1</label><input type="text" name="address_line1" class="form-control"></div>
             <div class="form-group"><label>Address Line 2</label><input type="text" name="address_line2" class="form-control"></div>
             <div class="form-group"><label>City</label><input type="text" name="city" class="form-control"></div>
             <div class="form-group"><label>State</label><input type="text" name="state" class="form-control"></div>
             <div class="form-group"><label>Zip Code</label><input type="text" name="zip_code" class="form-control"></div>
             <div class="form-group"><label>Country</label><input type="text" name="country" class="form-control"></div>
+          </div>
+          <div class="divider"></div>
+          <div class="form-section-title">Permanent Address</div>
+          <div class="form-grid">
+            <div class="form-group"><label>Address Line 1</label><input type="text" name="permanent_address_line1" class="form-control"></div>
+            <div class="form-group"><label>Address Line 2</label><input type="text" name="permanent_address_line2" class="form-control"></div>
+            <div class="form-group"><label>City</label><input type="text" name="permanent_city" class="form-control"></div>
+            <div class="form-group"><label>State</label><input type="text" name="permanent_state" class="form-control"></div>
+            <div class="form-group"><label>Zip Code</label><input type="text" name="permanent_zip_code" class="form-control"></div>
+          </div>
         </div>
+      </div>
 
-        <div class="section-title">Permanent Address</div>
-        <div class="form-grid">
-            <div class="form-group"><label>Permanent Address Line 1</label><input type="text" name="permanent_address_line1" class="form-control"></div>
-            <div class="form-group"><label>Permanent Address Line 2</label><input type="text" name="permanent_address_line2" class="form-control"></div>
-            <div class="form-group"><label>Permanent City</label><input type="text" name="permanent_city" class="form-control"></div>
-            <div class="form-group"><label>Permanent State</label><input type="text" name="permanent_state" class="form-control"></div>
-            <div class="form-group"><label>Permanent Zip Code</label><input type="text" name="permanent_zip_code" class="form-control"></div>
-        </div>
-
-        <!-- Financial Details -->
-        <div class="section-title">Financial & Statutory Details</div>
-        <div class="form-grid">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><div><h2>Financial & Statutory</h2></div></div>
+        <div class="card-body">
+          <div class="form-grid">
             <div class="form-group"><label>Gross Salary</label><input type="number" step="0.01" name="gross_salary" class="form-control"></div>
-            <div class="form-group">
-                <label>Account Type</label>
-                <select name="account_type" class="form-control"><option value="">Select</option><option value="Savings">Savings</option><option value="Current">Current</option></select>
+            <div class="form-group"><label>Account Type</label>
+              <select name="account_type" class="form-control"><option value="">Select</option><option>Savings</option><option>Current</option></select>
             </div>
             <div class="form-group"><label>Account Number</label><input type="text" name="account_number" class="form-control"></div>
             <div class="form-group"><label>IFSC Code</label><input type="text" name="ifsc_code" class="form-control"></div>
@@ -350,68 +231,79 @@ select.form-control { cursor: pointer; }
             <div class="form-group"><label>Aadhar Number</label><input type="text" name="aadhar_no" class="form-control"></div>
             <div class="form-group"><label>UAN Number</label><input type="text" name="uan_number" class="form-control"></div>
             <div class="form-group"><label>PF Account Number</label><input type="text" name="pf_account_number" class="form-control"></div>
-            <div class="form-group"><label>Employee Provident Fund</label><input type="text" name="employee_provident_fund" class="form-control"></div>
+            <div class="form-group"><label>Employee PF</label><input type="text" name="employee_provident_fund" class="form-control"></div>
             <div class="form-group"><label>Professional Tax</label><input type="text" name="professional_tax" class="form-control"></div>
             <div class="form-group"><label>ESI Number</label><input type="text" name="esi_number" class="form-control"></div>
-            <div class="form-group checkbox-group">
+            <div class="form-group" style="justify-content:flex-end;padding-top:20px;">
+              <div class="form-check">
                 <input type="checkbox" name="exempt_from_tax" id="exempt_from_tax" value="1">
-                <label for="exempt_from_tax" style="margin:0; cursor:pointer;">Exempt from Tax</label>
+                <label for="exempt_from_tax">Exempt from Tax</label>
+              </div>
             </div>
+          </div>
         </div>
+      </div>
 
-        <!-- Passport Details -->
-        <div class="section-title">Passport Details</div>
-        <div class="form-grid">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><div><h2>Passport Details</h2></div></div>
+        <div class="card-body">
+          <div class="form-grid">
             <div class="form-group"><label>Passport Number</label><input type="text" name="passport_no" class="form-control"></div>
             <div class="form-group"><label>Place of Issue</label><input type="text" name="place_of_issue" class="form-control"></div>
             <div class="form-group"><label>Date of Issue</label><input type="date" name="passport_date_of_issue" class="form-control"></div>
             <div class="form-group"><label>Date of Expiry</label><input type="date" name="passport_date_of_expiry" class="form-control"></div>
+          </div>
         </div>
+      </div>
 
-        <div class="form-actions">
-            <a href="employees.php" class="btn btn-secondary">Cancel</a>
-            <button type="submit" class="btn btn-primary">Save Employee</button>
-        </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:4px;">
+        <a href="employees.php" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Employee
+        </button>
+      </div>
     </form>
     </div>
 
+    <!-- Bulk Upload -->
     <div id="view-bulk" style="display:none;">
-        <div class="form-container" style="text-align: center; padding: 60px 40px;">
-            <svg width="48" height="48" fill="none" stroke="var(--accent)" stroke-width="1.5" viewBox="0 0 24 24" style="margin: 0 auto 24px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
-            <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 12px;">Bulk Upload Employees</h2>
-            <p style="color: var(--muted); max-width: 500px; margin: 0 auto 32px; line-height: 1.6;">Download the exact CSV template matching your current employee schema (including any active custom fields), fill it out, and upload it to create multiple employee records at once.</p>
-            
-            <div style="display: flex; justify-content: center; gap: 16px; align-items: center; flex-wrap: wrap;">
-                <a href="download_template.php" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px;">
-                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download CSV Template
-                </a>
-                
-                <form method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 12px;" onsubmit="return confirm('Upload this CSV to database?');">
-                    <input type="hidden" name="action" value="bulk_upload">
-                    <input type="file" name="csv_file" accept=".csv" required style="font-size: 0.95rem; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; cursor: pointer;">
-                    <button type="submit" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; background: #16a34a;">
-                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        Import CSV Data
-                    </button>
-                </form>
-            </div>
+      <div class="card">
+        <div class="card-body" style="text-align:center;padding:60px 40px;">
+          <div style="width:56px;height:56px;background:var(--brand-light);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+          </div>
+          <h2 style="font-size:18px;font-weight:800;margin-bottom:8px;">Bulk Upload Employees</h2>
+          <p style="color:var(--muted);max-width:480px;margin:0 auto 32px;line-height:1.6;font-size:13.5px;">Download the CSV template matching your current schema, fill it out, and upload to create multiple records at once.</p>
+          <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;align-items:center;">
+            <a href="download_template.php" class="btn btn-secondary">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Template
+            </a>
+            <form method="POST" enctype="multipart/form-data" style="display:flex;align-items:center;gap:10px;" onsubmit="return confirm('Import this CSV?')">
+              <input type="hidden" name="action" value="bulk_upload">
+              <input type="file" name="csv_file" accept=".csv" required style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);cursor:pointer;">
+              <button type="submit" class="btn btn-success">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Import CSV
+              </button>
+            </form>
+          </div>
         </div>
+      </div>
     </div>
 
+  </div>
+</div>
 </div>
 
 <script>
 function switchTab(tab) {
-    document.getElementById('tab-single').classList.remove('active');
-    document.getElementById('tab-bulk').classList.remove('active');
-    document.getElementById('view-single').style.display = 'none';
-    document.getElementById('view-bulk').style.display = 'none';
-    
-    document.getElementById('tab-' + tab).classList.add('active');
-    document.getElementById('view-' + tab).style.display = 'block';
+  ['single','bulk'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    document.getElementById('view-'+t).style.display = t===tab ? 'block' : 'none';
+  });
 }
 </script>
-
 </body>
 </html>
