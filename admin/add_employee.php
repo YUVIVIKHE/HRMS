@@ -120,8 +120,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <style>
-.page-header { margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center; }
-.page-header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
+.tab-btn {
+    padding: 16px 24px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+    color: #1d4ed8;
+    border-bottom-color: #1d4ed8;
+}
+
 
 .form-container {
     background: var(--surface);
@@ -205,16 +223,24 @@ select.form-control { cursor: pointer; }
 <?php include __DIR__ . '/sidebar.php'; ?>
 
 <div class="main">
-    <div class="page-header">
-        <h1>Add New Employee</h1>
-        <div style="display:flex; gap: 12px; align-items:center;">
-            <a href="download_template.php" style="background:#f1f5f9; color:var(--text); border:1px solid var(--border); padding:8px 16px; border-radius:8px; font-weight:600; font-size:0.85rem; text-decoration:none; transition:background 0.2s;">Download CSV Template</a>
-            <form method="POST" enctype="multipart/form-data" style="display:flex; gap:8px;" onsubmit="return confirm('Upload this CSV?');">
-                <input type="hidden" name="action" value="bulk_upload">
-                <input type="file" name="csv_file" accept=".csv" required style="font-size:0.85rem; border:1px solid var(--border); border-radius:6px; padding:6px; background:#fff">
-                <button type="submit" class="btn-primary" style="background:#16a34a; padding:8px 16px;">Bulk Import CSV</button>
-            </form>
+    <div class="header-card" style="margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; background: linear-gradient(135deg, #1d4ed8, #3b82f6); color: white; padding: 32px 40px; position: relative; overflow: hidden;">
+        <div class="header-bg" style="position: absolute; right: -100px; top: -100px; width: 400px; height: 400px; background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 70%); border-radius: 50%; z-index: 1;"></div>
+        <div style="position:relative; z-index:2; max-width: 700px;">
+            <div style="font-size:0.75rem; font-weight:700; letter-spacing:0.1em; opacity:0.8; margin-bottom:8px; text-transform:uppercase;">EMPLOYEE ONBOARDING</div>
+            <h1 style="font-size:2.2rem; font-weight:800; margin-bottom:12px; letter-spacing:-0.5px;">Add New Employee</h1>
+            <p style="font-size:1rem; opacity:0.9; line-height:1.6;">Fill in employee profile details in a structured form, or switch to bulk upload to onboard multiple employees at once.</p>
         </div>
+    </div>
+
+    <div style="background: var(--surface); border: 1px solid var(--border); border-top: none; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; display: flex; padding: 0 16px; margin-bottom: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        <button id="tab-single" class="tab-btn active" onclick="switchTab('single')">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Single Add
+        </button>
+        <button id="tab-bulk" class="tab-btn" onclick="switchTab('bulk')">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+            Bulk Upload
+        </button>
     </div>
 
     <?php if ($successMsg): ?>
@@ -225,6 +251,7 @@ select.form-control { cursor: pointer; }
     <?php endif; ?>
 
 
+    <div id="view-single">
     <form class="form-container" method="POST">
         <input type="hidden" name="action" value="save_employee">
         
@@ -346,7 +373,45 @@ select.form-control { cursor: pointer; }
             <button type="submit" class="btn btn-primary">Save Employee</button>
         </div>
     </form>
+    </div>
+
+    <div id="view-bulk" style="display:none;">
+        <div class="form-container" style="text-align: center; padding: 60px 40px;">
+            <svg width="48" height="48" fill="none" stroke="var(--accent)" stroke-width="1.5" viewBox="0 0 24 24" style="margin: 0 auto 24px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+            <h2 style="font-size: 1.5rem; font-weight: 800; margin-bottom: 12px;">Bulk Upload Employees</h2>
+            <p style="color: var(--muted); max-width: 500px; margin: 0 auto 32px; line-height: 1.6;">Download the exact CSV template matching your current employee schema (including any active custom fields), fill it out, and upload it to create multiple employee records at once.</p>
+            
+            <div style="display: flex; justify-content: center; gap: 16px; align-items: center; flex-wrap: wrap;">
+                <a href="download_template.php" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px;">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download CSV Template
+                </a>
+                
+                <form method="POST" enctype="multipart/form-data" style="display: flex; align-items: center; gap: 12px;" onsubmit="return confirm('Upload this CSV to database?');">
+                    <input type="hidden" name="action" value="bulk_upload">
+                    <input type="file" name="csv_file" accept=".csv" required style="font-size: 0.95rem; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; cursor: pointer;">
+                    <button type="submit" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; background: #16a34a;">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Import CSV Data
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
 </div>
+
+<script>
+function switchTab(tab) {
+    document.getElementById('tab-single').classList.remove('active');
+    document.getElementById('tab-bulk').classList.remove('active');
+    document.getElementById('view-single').style.display = 'none';
+    document.getElementById('view-bulk').style.display = 'none';
+    
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById('view-' + tab).style.display = 'block';
+}
+</script>
 
 </body>
 </html>
