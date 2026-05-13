@@ -112,21 +112,86 @@ if ($export && empty($dbError)) {
     $fname = 'attendance_' . $filterFrom . '_to_' . $filterTo . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $fname . '"');
+
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Date', 'Employee', 'Role', 'Clock In', 'Clock Out', 'Work Hours', 'Status', 'Location']);
+
+    // UTF-8 BOM so Excel opens correctly
+    fputs($out, "\xEF\xBB\xBF");
+
+    // Group allRows by user
+    $byUser = [];
     foreach ($allRows as $r) {
-        $hrs = $r['work_seconds'] ? fmtHrs($r['work_seconds']) : '—';
-        fputcsv($out, [
-            date('d M Y', strtotime($r['log_date'])),
-            $r['user_name'],
-            ucfirst($r['user_role']),
-            fmtTime($r['clock_in']),
-            fmtTime($r['clock_out']),
-            $hrs,
-            ucfirst(str_replace('_', ' ', $r['status'])),
-            $r['location_name'] ?? '—',
-        ]);
+        $byUser[$r['user_id']][] = $r;
     }
+
+    foreach ($byUser as $uid => $rows) {
+        $uName = $rows[0]['user_name'];
+        $uRole = ucfirst($rows[0]['user_role']);
+
+        // Employee header block
+        fputcsv($out, ['Employee', $uName, 'Role', $uRole]);
+        fputcsv($out, ['Period', $filterFrom . ' to ' . $filterTo]);
+        fputcsv($out, []); // blank line
+
+        // Column headers
+        fputcsv($out, ['Date', 'Day', 'Clock In', 'Clock Out', 'Work Hours', 'Status', 'Location']);
+
+        $totalSec     = 0;
+        $presentDays  = 0;
+        $absentDays   = 0;
+        $lateDays     = 0;
+        $shortDays    = 0;
+
+        foreach ($rows as $r) {
+            $sec    = (int)($r['work_seconds'] ?? 0);
+            $status = $r['status'];
+            $isAbs  = $status === 'absent';
+
+            // Work hours as plain text — no special chars
+            if ($sec > 0) {
+                $wh = floor($sec/3600) . 'h ' . str_pad(floor(($sec%3600)/60), 2, '0', STR_PAD_LEFT) . 'm';
+            } else {
+                $wh = $isAbs ? '' : '0h 00m';
+            }
+
+            // Clock times — plain empty string for absent/missing
+            $ci = ($r['clock_in']  && !$isAbs) ? date('h:i A', strtotime($r['clock_in']))  : '';
+            $co = ($r['clock_out'] && !$isAbs) ? date('h:i A', strtotime($r['clock_out'])) : '';
+
+            fputcsv($out, [
+                date('d-M-Y', strtotime($r['log_date'])),
+                date('D',     strtotime($r['log_date'])),
+                $ci,
+                $co,
+                $wh,
+                ucfirst(str_replace('_', ' ', $status)),
+                $isAbs ? '' : ($r['location_name'] ?? ''),
+            ]);
+
+            $totalSec += $sec;
+            if (in_array($status, ['present','remote'])) $presentDays++;
+            if ($status === 'absent')   $absentDays++;
+            if ($status === 'late')     { $presentDays++; $lateDays++; }
+            if ($sec > 0 && $sec < 32400) $shortDays++;
+        }
+
+        // Summary row
+        $totalH = floor($totalSec/3600);
+        $totalM = str_pad(floor(($totalSec%3600)/60), 2, '0', STR_PAD_LEFT);
+        fputcsv($out, []); // blank
+        fputcsv($out, [
+            'SUMMARY',
+            'Present: ' . $presentDays . ' days',
+            'Absent: '  . $absentDays  . ' days',
+            'Late: '    . $lateDays    . ' days',
+            'Short (<9h): ' . $shortDays . ' days',
+            'Total Hours: ' . $totalH . 'h ' . $totalM . 'm',
+            '',
+        ]);
+        fputcsv($out, []); // blank separator between employees
+        fputcsv($out, []); // extra blank
+    }
+
     fclose($out); exit;
 }
 
