@@ -6,7 +6,8 @@ $db = getDB();
 
 $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg   = $_SESSION['flash_error']   ?? '';
-unset($_SESSION['flash_success'], $_SESSION['flash_error']);
+$warnMsg    = $_SESSION['flash_warning'] ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error'], $_SESSION['flash_warning']);
 
 $stmt = $db->query("SHOW COLUMNS FROM employees");
 $allColumns = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -42,28 +43,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'bulk_upload') {
         if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
             $file = $_FILES['csv_file']['tmp_name'];
-            if (($handle = fopen($file,"r")) !== FALSE) {
-                $headers = fgetcsv($handle,10000,",");
-                if ($headers) {
-                    $mappedCols = array_map(fn($h) => in_array(trim($h),$allColumns)?trim($h):null, $headers);
-                    $count = 0; $db->beginTransaction();
+            if (($handle = fopen($file, "r")) !== FALSE) {
+                $csvHeaders = fgetcsv($handle, 10000, ",");
+                if ($csvHeaders) {
+                    // Build department name → id lookup (case-insensitive)
+                    $deptMap = [];
+                    foreach ($db->query("SELECT id, name FROM departments")->fetchAll(PDO::FETCH_ASSOC) as $d) {
+                        $deptMap[strtolower(trim($d['name']))] = (int)$d['id'];
+                    }
+
+                    // Normalise CSV headers
+                    $csvHeaders = array_map('trim', $csvHeaders);
+
+                    $successCount = 0;
+                    $rowErrors    = [];
+                    $rowNum       = 1; // 1 = header row
+
+                    $db->beginTransaction();
                     try {
-                        while (($data = fgetcsv($handle,10000,",")) !== FALSE) {
-                            $ic=[]; $ph=[]; $pr=[];
-                            foreach ($data as $i => $val) {
-                                $c = $mappedCols[$i] ?? null;
-                                if ($c && $c!=='id' && $c!=='created_at') { $ic[]="`$c`"; $ph[]="?"; $pr[]=trim($val)===''?null:trim($val); }
+                        while (($data = fgetcsv($handle, 10000, ",")) !== FALSE) {
+                            $rowNum++;
+                            // Skip completely blank rows
+                            if (empty(array_filter($data, fn($v) => trim($v) !== ''))) continue;
+
+                            // Map CSV columns → values
+                            $row = [];
+                            foreach ($csvHeaders as $i => $h) {
+                                $row[$h] = isset($data[$i]) ? trim($data[$i]) : '';
                             }
-                            if (!empty($ic)) { $db->prepare("INSERT INTO employees (".implode(',',$ic).") VALUES (".implode(',',$ph).")")->execute($pr); $count++; }
+
+                            // Validate required fields
+                            $missing = [];
+                            foreach (['first_name', 'last_name', 'email'] as $req) {
+                                if (empty($row[$req])) $missing[] = $req;
+                            }
+                            if (!empty($missing)) {
+                                $rowErrors[] = "Row $rowNum: missing required field(s): " . implode(', ', $missing);
+                                continue;
+                            }
+
+                            // Resolve department name → department_id
+                            if (isset($row['department'])) {
+                                $dKey = strtolower($row['department']);
+                                $row['department_id'] = $deptMap[$dKey] ?? null;
+                                if (!empty($row['department']) && $row['department_id'] === null) {
+                                    $rowErrors[] = "Row $rowNum: unknown department '{$row['department']}' — set to NULL.";
+                                }
+                                unset($row['department']);
+                            }
+
+                            // Build INSERT only for known columns, skip id/created_at
+                            $ic = []; $ph = []; $pr = [];
+                            foreach ($row as $col => $val) {
+                                if (!in_array($col, $allColumns) || $col === 'id' || $col === 'created_at') continue;
+                                $ic[] = "`$col`";
+                                $ph[] = "?";
+                                $pr[] = ($val === '') ? null : $val;
+                            }
+
+                            if (!empty($ic)) {
+                                $db->prepare("INSERT INTO employees (" . implode(',', $ic) . ") VALUES (" . implode(',', $ph) . ")")->execute($pr);
+                                $successCount++;
+                            }
                         }
                         $db->commit();
-                        $_SESSION['flash_success'] = "$count employees imported.";
-                    } catch (Exception $e) { $db->rollBack(); $_SESSION['flash_error'] = "Import failed: ".$e->getMessage(); }
-                } else { $_SESSION['flash_error'] = "Invalid CSV."; }
+
+                        $msg = "$successCount employee(s) imported successfully.";
+                        if (!empty($rowErrors)) {
+                            $_SESSION['flash_warning'] = $msg . " Warnings: " . implode(' | ', $rowErrors);
+                        } else {
+                            $_SESSION['flash_success'] = $msg;
+                        }
+                    } catch (Exception $e) {
+                        $db->rollBack();
+                        $_SESSION['flash_error'] = "Import failed at row $rowNum: " . $e->getMessage();
+                    }
+                } else {
+                    $_SESSION['flash_error'] = "Invalid or empty CSV file.";
+                }
                 fclose($handle);
+            } else {
+                $_SESSION['flash_error'] = "Could not read uploaded file.";
             }
-        } else { $_SESSION['flash_error'] = "Upload error."; }
-        header("Location: add_employee.php"); exit;
+        } else {
+            $_SESSION['flash_error'] = "File upload error. Please try again.";
+        }
+        header("Location: add_employee.php?tab=bulk"); exit;
     }
 }
 ?>
@@ -97,6 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?php if($successMsg): ?>
       <div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div>
+    <?php endif; ?>
+    <?php if($warnMsg): ?>
+      <div class="alert alert-warning"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><?= htmlspecialchars($warnMsg) ?></div>
     <?php endif; ?>
     <?php if($errorMsg): ?>
       <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
@@ -276,6 +344,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Bulk Upload -->
     <div id="view-bulk" style="display:none;">
+
+      <!-- Step cards -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
+        <div class="card" style="text-align:center;padding:24px 20px;">
+          <div style="width:40px;height:40px;background:var(--brand-light);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--brand);font-size:18px;font-weight:800;">1</div>
+          <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Download Template</div>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Get the CSV with all columns including your custom fields and a sample row.</p>
+          <a href="download_template.php" class="btn btn-secondary btn-sm" style="margin-top:14px;">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download CSV
+          </a>
+        </div>
+        <div class="card" style="text-align:center;padding:24px 20px;">
+          <div style="width:40px;height:40px;background:#d1fae5;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#059669;font-size:18px;font-weight:800;">2</div>
+          <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Fill in Data</div>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Fill employee rows. Delete the sample row before uploading. Keep column headers unchanged.</p>
+        </div>
+        <div class="card" style="text-align:center;padding:24px 20px;">
+          <div style="width:40px;height:40px;background:var(--yellow-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--yellow);font-size:18px;font-weight:800;">3</div>
+          <div style="font-weight:700;font-size:13.5px;margin-bottom:6px;">Upload & Import</div>
+          <p style="font-size:12.5px;color:var(--muted);line-height:1.5;">Upload the filled CSV. Valid rows are imported; rows with errors are skipped and reported.</p>
+        </div>
+      </div>
+
+      <!-- Upload form -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Upload CSV File</h2>
+            <p>Only .csv files accepted. Max file size depends on your server's upload_max_filesize setting.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="POST" enctype="multipart/form-data" id="bulkForm">
+            <input type="hidden" name="action" value="bulk_upload">
+            <div style="border:2px dashed var(--border);border-radius:var(--radius-lg);padding:40px;text-align:center;background:var(--surface-2);cursor:pointer;" onclick="document.getElementById('csv_file').click();" id="dropZone">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="margin:0 auto 12px;display:block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              <div id="dropLabel" style="font-size:14px;font-weight:600;color:var(--muted);margin-bottom:4px;">Click to select a CSV file</div>
+              <div style="font-size:12px;color:var(--muted-light);">or drag and drop here</div>
+              <input type="file" id="csv_file" name="csv_file" accept=".csv" required style="display:none;" onchange="onFileSelect(this)">
+            </div>
+            <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+              <a href="download_template.php" class="btn btn-secondary">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Template
+              </a>
+              <button type="submit" class="btn btn-success" id="importBtn" disabled>
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Import CSV
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Field reference -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header"><div><h2>Field Reference</h2><p>Accepted values for key columns</p></div></div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">department</div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.7;">
+                <?php foreach($deptList as $d): ?>
+                  <span style="display:inline-block;background:#f3f4f6;border-radius:4px;padding:1px 7px;margin:2px 2px 2px 0;font-family:monospace;"><?= htmlspecialchars($d['name']) ?></span>
+                <?php endforeach; ?>
+              </div>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">employee_type</div>
+              <div style="font-size:12px;color:var(--muted);">
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">FTE</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">External</span>
+              </div>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">status</div>
+              <div style="font-size:12px;color:var(--muted);">
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">active</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">inactive</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">terminated</span>
+              </div>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">gender</div>
+              <div style="font-size:12px;color:var(--muted);">
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Male</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Female</span>
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">Other</span>
+              </div>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">date fields</div>
+              <div style="font-size:12px;color:var(--muted);">Format: <span style="font-family:monospace;">YYYY-MM-DD</span> e.g. <span style="font-family:monospace;">2024-01-15</span></div>
+            </div>
+            <div style="background:var(--surface-2);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">exempt_from_tax</div>
+              <div style="font-size:12px;color:var(--muted);">
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">0</span> = No &nbsp;
+                <span style="background:#f3f4f6;border-radius:4px;padding:1px 7px;font-family:monospace;">1</span> = Yes
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
       <div class="card">
         <div class="card-body" style="text-align:center;padding:60px 40px;">
           <div style="width:56px;height:56px;background:var(--brand-light);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
@@ -312,6 +487,38 @@ function switchTab(tab) {
     document.getElementById('view-'+t).style.display = t===tab ? 'block' : 'none';
   });
 }
+
+function onFileSelect(input) {
+  const label = document.getElementById('dropLabel');
+  const btn   = document.getElementById('importBtn');
+  if (input.files && input.files[0]) {
+    label.textContent = input.files[0].name;
+    label.style.color = 'var(--text)';
+    btn.disabled = false;
+  }
+}
+
+// Drag and drop
+const zone = document.getElementById('dropZone');
+if (zone) {
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--brand)'; zone.style.background = 'var(--brand-light)'; });
+  zone.addEventListener('dragleave', () => { zone.style.borderColor = 'var(--border)'; zone.style.background = 'var(--surface-2)'; });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.style.borderColor = 'var(--border)'; zone.style.background = 'var(--surface-2)';
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      const input = document.getElementById('csv_file');
+      const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+      onFileSelect(input);
+    }
+  });
+}
+
+// Auto-open bulk tab if there was a bulk-related flash
+<?php if(isset($_GET['tab']) && $_GET['tab']==='bulk'): ?>
+switchTab('bulk');
+<?php endif; ?>
 </script>
 </body>
 </html>
