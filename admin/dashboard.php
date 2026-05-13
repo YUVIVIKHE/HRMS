@@ -92,24 +92,7 @@ nav a svg{width:20px;height:20px;flex-shrink:0}
 </style>
 </head>
 <body>
-<aside class="sidebar">
-  <div class="s-logo">
-    <div class="lb">⚡</div>
-    <div><strong>HRMS Portal</strong><small>Admin Environment</small></div>
-  </div>
-  <nav>
-    <a href="dashboard.php" class="active">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        <span>Dashboard</span>
-    </a>
-  </nav>
-  <div class="s-foot">
-    <a href="../auth/logout.php">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        <span>Secure Logout</span>
-    </a>
-  </div>
-</aside>
+<?php include __DIR__ . '/sidebar.php'; ?>
 
 <div class="main">
     <div class="welcome-card">
