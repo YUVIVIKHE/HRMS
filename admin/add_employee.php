@@ -4,8 +4,11 @@ require_once __DIR__ . '/../auth/db.php';
 guardRole('admin');
 
 $db = getDB();
-$successMsg = '';
-$errorMsg = '';
+
+// Handle flashed messages
+$successMsg = $_SESSION['flash_success'] ?? '';
+$errorMsg = $_SESSION['flash_error'] ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // Get existing columns
 $stmt = $db->query("SHOW COLUMNS FROM employees");
@@ -24,15 +27,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (!empty($fieldName) && !in_array($fieldName, $allColumns)) {
                 $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL");
-                $successMsg = "Custom field '$fieldName' added successfully to the database!";
-                $allColumns[] = $fieldName;
-                $customColumns[] = $fieldName;
+                $_SESSION['flash_success'] = "Custom field '$fieldName' added successfully to the database!";
             } else {
-                $errorMsg = "Invalid field name or field already exists.";
+                $_SESSION['flash_error'] = "Invalid field name or field already exists.";
             }
         } catch (PDOException $e) {
-            $errorMsg = "Error adding custom field: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Error adding custom field: " . $e->getMessage();
         }
+        header("Location: add_employee.php");
+        exit;
     } elseif ($action === 'save_employee') {
         try {
             $insertCols = [];
@@ -58,13 +61,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sql = "INSERT INTO employees (" . implode(', ', $insertCols) . ") VALUES (" . implode(', ', $placeholders) . ")";
                 $stmt = $db->prepare($sql);
                 $stmt->execute($params);
-                $successMsg = "Employee profile saved successfully!";
+                $_SESSION['flash_success'] = "Employee profile saved successfully!";
+                header("Location: employees.php");
+                exit;
             } else {
-                $errorMsg = "No data submitted.";
+                $_SESSION['flash_error'] = "No data submitted.";
             }
         } catch (PDOException $e) {
-            $errorMsg = "Error adding employee: " . $e->getMessage();
+            $_SESSION['flash_error'] = "Error adding employee: " . $e->getMessage();
         }
+        header("Location: add_employee.php");
+        exit;
     }
 }
 ?>
