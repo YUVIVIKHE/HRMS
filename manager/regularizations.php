@@ -126,11 +126,7 @@ foreach (['pending','approved','rejected'] as $s) {
     $c = $db->prepare("SELECT COUNT(*) FROM attendance_regularizations ar JOIN users u ON ar.user_id=u.id JOIN employees e ON e.email=u.email WHERE (u.manager_id=? OR e.department_id=?) AND u.id!=? AND ar.status=?");
     $c->execute([$uid, $managerDeptId ?: 0, $uid, $s]); $counts[$s] = (int)$c->fetchColumn();
 }
-$statusMap = ['pending'=>'badge-yellow','approved'=>'badge-green','rejected'=>'badge-red'];
-
-// Manager's own regularization requests
-$myRegs = $db->prepare("SELECT * FROM attendance_regularizations WHERE user_id=? ORDER BY log_date DESC");
-$myRegs->execute([$uid]); $myRegs = $myRegs->fetchAll();?>
+$statusMap = ['pending'=>'badge-yellow','approved'=>'badge-green','rejected'=>'badge-red'];?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -243,27 +239,6 @@ $myRegs->execute([$uid]); $myRegs = $myRegs->fetchAll();?>
       </table>
     </div>
 
-    <!-- My own regularization requests -->
-    <?php if(!empty($myRegs)): ?>
-    <div class="table-wrap" style="margin-top:24px;">
-      <div class="table-toolbar"><h2>My Regularization Requests</h2></div>
-      <table>
-        <thead><tr><th>Date</th><th>Req. Clock In</th><th>Req. Clock Out</th><th>Reason</th><th>Status</th><th>Review Note</th></tr></thead>
-        <tbody>
-          <?php foreach($myRegs as $r): ?>
-          <tr>
-            <td class="font-semibold text-sm"><?= date('D, d M Y', strtotime($r['log_date'])) ?></td>
-            <td class="text-sm"><?= date('h:i A', strtotime($r['req_clock_in'])) ?></td>
-            <td class="text-sm"><?= date('h:i A', strtotime($r['req_clock_out'])) ?></td>
-            <td class="text-muted text-sm"><?= htmlspecialchars($r['reason']) ?></td>
-            <td><span class="badge <?= $statusMap[$r['status']]??'badge-gray' ?>"><?= ucfirst($r['status']) ?></span></td>
-            <td class="text-muted text-sm"><?= htmlspecialchars($r['review_note'] ?: '—') ?></td>
-          </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-    <?php endif; ?>
 
   </div>
 </div>
