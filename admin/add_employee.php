@@ -10,6 +10,7 @@ unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 $stmt = $db->query("SHOW COLUMNS FROM employees");
 $allColumns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+$deptList = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 $baseColumns = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
 $customColumns = array_diff($allColumns, $baseColumns);
 
@@ -177,7 +178,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-group"><label>Employee ID</label><input type="text" name="employee_id" class="form-control"></div>
             <div class="form-group"><label>User Code</label><input type="text" name="user_code" class="form-control"></div>
             <div class="form-group"><label>Job Title</label><input type="text" name="job_title" class="form-control"></div>
-            <div class="form-group"><label>Department ID</label><input type="number" name="department_id" class="form-control"></div>
+            <div class="form-group"><label>Department</label>
+              <select name="department_id" class="form-control">
+                <option value="">Select Department</option>
+                <?php foreach($deptList as $d): ?>
+                <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
             <div class="form-group"><label>Employee Type</label>
               <select name="employee_type" class="form-control"><option value="FTE">FTE</option><option value="External">External</option></select>
             </div>

@@ -44,6 +44,25 @@ VALUES (
   'active'
 );
 
+-- ── Departments ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `departments` (
+  `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `name`       VARCHAR(100)  NOT NULL,
+  `created_at` TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_dept_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `departments` (`id`, `name`) VALUES
+  (1, 'Admin'),
+  (2, 'Engineering Design'),
+  (3, 'Finance'),
+  (4, 'HR'),
+  (5, 'Project Management'),
+  (6, 'Sales'),
+  (7, 'SCM & Stores'),
+  (8, 'Site Supervision');
+
 -- ── Detailed Employee Records ────────────────────────────────
 CREATE TABLE IF NOT EXISTS `employees` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -56,7 +75,7 @@ CREATE TABLE IF NOT EXISTS `employees` (
   `gender` enum('Male','Female','Other') DEFAULT NULL,
   `marital_status` enum('Single','Married','Divorced','Widowed') DEFAULT NULL,
   `employee_id` varchar(50) DEFAULT NULL,
-  `department_id` int(11) DEFAULT NULL,
+  `department_id` int(11) UNSIGNED DEFAULT NULL,
   `employee_type` enum('FTE','External') NOT NULL DEFAULT 'FTE',
   `date_of_joining` date DEFAULT NULL,
   `date_of_exit` date DEFAULT NULL,
@@ -100,5 +119,47 @@ CREATE TABLE IF NOT EXISTS `employees` (
   `status` enum('Active','Inactive','Terminated') DEFAULT 'Active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `gross_salary` decimal(12,2) NOT NULL DEFAULT 0.00 COMMENT 'CTC gross salary for payroll auto-fill',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  INDEX `idx_department_id` (`department_id`),
+  CONSTRAINT `fk_emp_department` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+--  MIGRATION — Run on existing databases to add departments
+--  Safe to run multiple times (uses IF NOT EXISTS / IGNORE)
+-- ============================================================
+
+-- 1. Create departments table if it doesn't exist yet
+CREATE TABLE IF NOT EXISTS `departments` (
+  `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `name`       VARCHAR(100)  NOT NULL,
+  `created_at` TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_dept_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `departments` (`id`, `name`) VALUES
+  (1, 'Admin'),
+  (2, 'Engineering Design'),
+  (3, 'Finance'),
+  (4, 'HR'),
+  (5, 'Project Management'),
+  (6, 'Sales'),
+  (7, 'SCM & Stores'),
+  (8, 'Site Supervision');
+
+-- 2. Change department_id to UNSIGNED to match departments.id
+--    (skip if already done)
+ALTER TABLE `employees`
+  MODIFY COLUMN `department_id` INT UNSIGNED DEFAULT NULL;
+
+-- 3. Add index + FK if not already present
+ALTER TABLE `employees`
+  ADD INDEX IF NOT EXISTS `idx_department_id` (`department_id`);
+
+SET FOREIGN_KEY_CHECKS = 0;
+ALTER TABLE `employees`
+  ADD CONSTRAINT IF NOT EXISTS `fk_emp_department`
+  FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`)
+  ON UPDATE CASCADE ON DELETE SET NULL;
+SET FOREIGN_KEY_CHECKS = 1;

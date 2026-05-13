@@ -18,6 +18,9 @@ $stats = $db->query("
 ")->fetch(PDO::FETCH_ASSOC);
 
 $employees = $db->query("SELECT id, CONCAT(first_name,' ',last_name) AS name, email, job_title, department_id, status, employee_type, created_at FROM employees ORDER BY created_at DESC")->fetchAll();
+
+$deptRows = $db->query("SELECT id, name FROM departments ORDER BY id")->fetchAll(PDO::FETCH_KEY_PAIR);
+$departments = $deptRows ?: [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -126,6 +129,7 @@ $employees = $db->query("SELECT id, CONCAT(first_name,' ',last_name) AS name, em
         <thead>
           <tr>
             <th>Employee</th>
+            <th>Department</th>
             <th>Job Title</th>
             <th>Type</th>
             <th>Status</th>
@@ -147,6 +151,7 @@ $employees = $db->query("SELECT id, CONCAT(first_name,' ',last_name) AS name, em
                 </div>
               </div>
             </td>
+            <td class="text-muted"><?= htmlspecialchars($departments[$emp['department_id']] ?? '—') ?></td>
             <td class="text-muted"><?= htmlspecialchars($emp['job_title'] ?: '—') ?></td>
             <td>
               <span class="badge <?= $emp['employee_type']==='FTE'?'badge-blue':'badge-yellow' ?>">
