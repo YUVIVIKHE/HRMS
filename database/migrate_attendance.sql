@@ -60,3 +60,75 @@ CREATE TABLE IF NOT EXISTS `user_locations` (
   CONSTRAINT `fk_ul_user` FOREIGN KEY (`user_id`)     REFERENCES `users`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_ul_loc`  FOREIGN KEY (`location_id`) REFERENCES `attendance_locations`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ============================================================
+--  LEAVE MANAGEMENT
+-- ============================================================
+
+-- Leave types defined by admin
+CREATE TABLE IF NOT EXISTS `leave_types` (
+  `id`              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `name`            VARCHAR(100)  NOT NULL,
+  `days_per_credit` DECIMAL(5,1)  NOT NULL DEFAULT 1.0 COMMENT 'Days credited per cycle',
+  `credit_cycle`    ENUM('monthly','yearly','manual') NOT NULL DEFAULT 'monthly',
+  `credit_day`      TINYINT       NOT NULL DEFAULT 1 COMMENT 'Day of month/year to auto-credit',
+  `max_carry_fwd`   DECIMAL(5,1)  NOT NULL DEFAULT 0 COMMENT '0 = no carry forward',
+  `is_active`       TINYINT(1)    NOT NULL DEFAULT 1,
+  `color`           VARCHAR(7)    NOT NULL DEFAULT '#4f46e5',
+  `created_at`      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Leave balance per user per leave type
+CREATE TABLE IF NOT EXISTS `leave_balances` (
+  `id`           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`      INT UNSIGNED  NOT NULL,
+  `leave_type_id`INT UNSIGNED  NOT NULL,
+  `balance`      DECIMAL(5,1)  NOT NULL DEFAULT 0,
+  `used`         DECIMAL(5,1)  NOT NULL DEFAULT 0,
+  `updated_at`   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_type` (`user_id`,`leave_type_id`),
+  CONSTRAINT `fk_lb_user` FOREIGN KEY (`user_id`)       REFERENCES `users`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_lb_type` FOREIGN KEY (`leave_type_id`) REFERENCES `leave_types`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Leave credit log (audit trail)
+CREATE TABLE IF NOT EXISTS `leave_credit_log` (
+  `id`           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`      INT UNSIGNED  NOT NULL,
+  `leave_type_id`INT UNSIGNED  NOT NULL,
+  `days`         DECIMAL(5,1)  NOT NULL,
+  `reason`       VARCHAR(255)  NULL,
+  `credited_by`  INT UNSIGNED  NULL COMMENT 'admin user_id, NULL = auto',
+  `created_at`   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_lcl_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Leave applications
+CREATE TABLE IF NOT EXISTS `leave_applications` (
+  `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`       INT UNSIGNED  NOT NULL,
+  `leave_type_id` INT UNSIGNED  NOT NULL,
+  `from_date`     DATE          NOT NULL,
+  `to_date`       DATE          NOT NULL,
+  `days`          DECIMAL(5,1)  NOT NULL,
+  `reason`        TEXT          NULL,
+  `status`        ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  `reviewed_by`   INT UNSIGNED  NULL,
+  `reviewed_at`   DATETIME      NULL,
+  `review_note`   VARCHAR(255)  NULL,
+  `created_at`    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_la_user`   (`user_id`),
+  INDEX `idx_la_status` (`status`),
+  CONSTRAINT `fk_la_user` FOREIGN KEY (`user_id`)       REFERENCES `users`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_la_type` FOREIGN KEY (`leave_type_id`) REFERENCES `leave_types`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Seed default leave types
+INSERT IGNORE INTO `leave_types` (`id`,`name`,`days_per_credit`,`credit_cycle`,`credit_day`,`max_carry_fwd`,`color`) VALUES
+(1,'Casual Leave',   1.0, 'monthly', 1, 0,  '#10b981'),
+(2,'Privilege Leave',1.0, 'monthly', 1, 30, '#4f46e5'),
+(3,'Sick Leave',     1.0, 'monthly', 1, 0,  '#ef4444');
