@@ -165,8 +165,8 @@ foreach ($ulRows as $r) {
             <button type="button" class="btn btn-secondary" onclick="clearSel()" style="margin-bottom:1px;">Clear</button>
           </div>
 
-          <div class="table-wrap" style="box-shadow:none;">
-            <div class="table-toolbar" style="padding:10px 16px;">
+          <div class="table-wrap" style="box-shadow:none;max-height:420px;overflow-y:auto;">
+            <div class="table-toolbar" style="padding:10px 16px;position:sticky;top:0;z-index:3;background:var(--surface);border-bottom:1px solid var(--border-light);">
               <div style="display:flex;align-items:center;gap:8px;">
                 <input type="checkbox" id="selAll" style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;" onchange="toggleAll(this)">
                 <span style="font-size:13px;font-weight:600;color:var(--text-2);">Select All</span>
@@ -177,7 +177,7 @@ foreach ($ulRows as $r) {
               </div>
             </div>
             <table>
-              <thead>
+              <thead style="position:sticky;top:0;z-index:2;">
                 <tr>
                   <th style="width:40px;"></th>
                   <th>User</th>
@@ -235,12 +235,12 @@ foreach ($ulRows as $r) {
     </div>
 
     <!-- ── SECTION 2: Locations List ── -->
-    <div class="table-wrap">
-      <div class="table-toolbar">
+    <div class="table-wrap" style="max-height:400px;overflow-y:auto;">
+      <div class="table-toolbar" style="position:sticky;top:0;z-index:2;background:var(--surface);">
         <h2>All Locations <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($locations) ?>)</span></h2>
       </div>
       <table>
-        <thead>
+        <thead style="position:sticky;top:56px;z-index:2;">
           <tr>
             <th>Name</th>
             <th>Address</th>
