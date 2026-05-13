@@ -13,6 +13,9 @@ define('DB_CHARSET', 'utf8mb4');
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo === null) {
+        // Set IST timezone for all PHP date functions
+        date_default_timezone_set('Asia/Kolkata');
+
         $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -24,6 +27,8 @@ function getDB(): PDO {
             // Force consistent collation for the session to avoid collation mismatch errors
             $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_general_ci");
             $pdo->exec("SET collation_connection = utf8mb4_general_ci");
+            // Set MySQL session timezone to IST (+05:30)
+            $pdo->exec("SET time_zone = '+05:30'"  );
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_locations` (
                   `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,

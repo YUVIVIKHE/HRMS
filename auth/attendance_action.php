@@ -7,6 +7,9 @@
 require_once __DIR__ . '/guard.php';
 require_once __DIR__ . '/db.php';
 
+// Set IST timezone — all date/time operations use India Standard Time
+date_default_timezone_set('Asia/Kolkata');
+
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
