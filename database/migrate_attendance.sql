@@ -41,3 +41,10 @@ CREATE TABLE IF NOT EXISTS `attendance_logs` (
   CONSTRAINT `fk_att_user`     FOREIGN KEY (`user_id`)     REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_att_location` FOREIGN KEY (`location_id`) REFERENCES `attendance_locations` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Fix collation mismatch (run if you get error 1267) ───────
+ALTER TABLE `attendance_locations`
+  CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+ALTER TABLE `attendance_logs`
+  CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;

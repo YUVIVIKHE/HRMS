@@ -58,8 +58,8 @@ try {
     if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
 
     $stmt = $db->prepare("
-        SELECT al.*, u.name AS user_name, u.role AS user_role,
-               loc.name AS location_name
+        SELECT al.*, u.name COLLATE utf8mb4_general_ci AS user_name, u.role AS user_role,
+               loc.name COLLATE utf8mb4_general_ci AS location_name
         FROM attendance_logs al
         JOIN users u ON al.user_id = u.id
         LEFT JOIN attendance_locations loc ON al.location_id = loc.id
@@ -70,7 +70,7 @@ try {
     $logs = $stmt->fetchAll();
 
     $locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote DESC, name ASC")->fetchAll();
-    $users     = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+    $users     = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') ORDER BY name COLLATE utf8mb4_general_ci")->fetchAll();
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
     error_log('Admin attendance error: ' . $e->getMessage());

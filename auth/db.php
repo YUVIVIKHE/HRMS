@@ -34,7 +34,7 @@ function getDB(): PDO {
                   `is_active`  TINYINT(1)    NOT NULL DEFAULT 1,
                   `created_at` TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
             $pdo->exec("
                 INSERT IGNORE INTO `attendance_locations`
@@ -64,7 +64,7 @@ function getDB(): PDO {
                   INDEX `idx_user_id`  (`user_id`),
                   CONSTRAINT `fk_att_user`     FOREIGN KEY (`user_id`)     REFERENCES `users`(`id`) ON DELETE CASCADE,
                   CONSTRAINT `fk_att_location` FOREIGN KEY (`location_id`) REFERENCES `attendance_locations`(`id`) ON DELETE SET NULL
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
         } catch (PDOException $e) {
             error_log('DB Connection failed: ' . $e->getMessage());
