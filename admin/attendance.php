@@ -8,95 +8,20 @@ $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-// ── Handle POST ──────────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = $_POST['action'] ?? '';
-
-    if ($action === 'add_location') {
-        $name      = trim($_POST['name'] ?? '');
-        $address   = trim($_POST['address'] ?? '');
-        $lat       = (float)($_POST['latitude'] ?? 0);
-        $lng       = (float)($_POST['longitude'] ?? 0);
-        $radius    = max(50, (int)($_POST['radius_m'] ?? 200));
-        $isRemote  = isset($_POST['is_remote']) ? 1 : 0;
-        if ($name) {
-            $db->prepare("INSERT INTO attendance_locations (name, address, latitude, longitude, radius_m, is_remote) VALUES (?,?,?,?,?,?)")
-               ->execute([$name, $address, $lat, $lng, $radius, $isRemote]);
-            $_SESSION['flash_success'] = "Location '$name' added.";
-        }
-        header("Location: attendance.php"); exit;
-    }
-
-    if ($action === 'toggle_location') {
-        $lid = (int)$_POST['location_id'];
-        $db->prepare("UPDATE attendance_locations SET is_active = NOT is_active WHERE id = ?")->execute([$lid]);
-        header("Location: attendance.php"); exit;
-    }
-
-    if ($action === 'delete_location') {
-        $lid = (int)$_POST['location_id'];
-        $db->prepare("DELETE FROM attendance_locations WHERE id = ? AND id != 1")->execute([$lid]);
-        $_SESSION['flash_success'] = "Location deleted.";
-        header("Location: attendance.php"); exit;
-    }
-
-    if ($action === 'assign_locations') {
-        $locId   = (int)($_POST['assign_location_id'] ?? 0);
-        $userIds = array_map('intval', $_POST['user_ids'] ?? []);
-        if ($locId > 0 && !empty($userIds)) {
-            $stmt = $db->prepare("INSERT IGNORE INTO user_locations (user_id, location_id) VALUES (?, ?)");
-            foreach ($userIds as $uid) {
-                $stmt->execute([$uid, $locId]);
-            }
-            $_SESSION['flash_success'] = count($userIds) . " user(s) assigned to location.";
-        }
-        header("Location: attendance.php#locations"); exit;
-    }
-
-    if ($action === 'remove_user_location') {
-        $uid = (int)$_POST['user_id'];
-        $lid = (int)$_POST['location_id'];
-        $db->prepare("DELETE FROM user_locations WHERE user_id = ? AND location_id = ?")->execute([$uid, $lid]);
-        header("Location: attendance.php#locations"); exit;
-    }
-}
-
 // ── Filters ──────────────────────────────────────────────────
-$filterDate  = $_GET['date']   ?? date('Y-m');
-$filterUser  = (int)($_GET['user_id'] ?? 0);
-$filterRole  = $_GET['role']   ?? '';
+$filterFrom = $_GET['from']    ?? date('Y-m-01');          // default: 1st of current month
+$filterTo   = $_GET['to']      ?? date('Y-m-d');           // default: today
+$filterUser = (int)($_GET['user_id'] ?? 0);
+$filterRole = $_GET['role']    ?? '';
+$export     = isset($_GET['export']);
 
-$logs      = [];
-$locations = [];
-$users     = [];
-$dbError   = null;
+// Clamp dates
+if ($filterFrom > $filterTo) $filterFrom = $filterTo;
 
-try {
-    $where  = ["DATE_FORMAT(al.log_date,'%Y-%m') = ?"];
-    $params = [$filterDate];
-    if ($filterUser > 0) { $where[] = "al.user_id = ?"; $params[] = $filterUser; }
-    if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
-
-    $stmt = $db->prepare("
-        SELECT al.*, 
-               u.name AS user_name, 
-               u.role AS user_role,
-               loc.name AS location_name
-        FROM attendance_logs al
-        JOIN users u ON al.user_id = u.id
-        LEFT JOIN attendance_locations loc ON al.location_id = loc.id
-        WHERE " . implode(' AND ', $where) . "
-        ORDER BY al.log_date DESC, u.name ASC
-    ");
-    $stmt->execute($params);
-    $logs = $stmt->fetchAll();
-
-    $locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote DESC, name ASC")->fetchAll();
-    $users     = $db->query("SELECT id, name, email, role FROM users WHERE role IN ('employee','manager') ORDER BY name COLLATE utf8mb4_general_ci")->fetchAll();
-} catch (PDOException $e) {
-    $dbError = $e->getMessage();
-    error_log('Admin attendance error: ' . $e->getMessage());
-}
+$logs    = [];
+$users   = [];
+$allRows = [];   // final rows including absent fill-in
+$dbError = null;
 
 if (!function_exists('fmtTime')) {
     function fmtTime($dt) { return $dt ? date('h:i A', strtotime($dt)) : '—'; }
@@ -107,6 +32,105 @@ if (!function_exists('fmtHrs')) {
         return sprintf('%dh %02dm', floor($sec/3600), floor(($sec%3600)/60));
     }
 }
+
+try {
+    $users = $db->query("SELECT id, name, email, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+
+    // Build query
+    $where  = ["al.log_date BETWEEN ? AND ?"];
+    $params = [$filterFrom, $filterTo];
+    if ($filterUser > 0) { $where[] = "al.user_id = ?"; $params[] = $filterUser; }
+    if ($filterRole)     { $where[] = "u.role = ?";     $params[] = $filterRole; }
+
+    $stmt = $db->prepare("
+        SELECT al.*, u.name AS user_name, u.role AS user_role,
+               loc.name AS location_name
+        FROM attendance_logs al
+        JOIN users u ON al.user_id = u.id
+        LEFT JOIN attendance_locations loc ON al.location_id = loc.id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY al.log_date ASC, u.name ASC
+    ");
+    $stmt->execute($params);
+    $logs = $stmt->fetchAll();
+
+    // ── Fill absent days ─────────────────────────────────────
+    // Build a set of (user_id, log_date) that exist
+    $existing = [];
+    foreach ($logs as $l) $existing[$l['user_id'].'_'.$l['log_date']] = true;
+
+    // Determine which users to fill
+    $fillUsers = [];
+    if ($filterUser > 0) {
+        foreach ($users as $u) { if ($u['id'] === $filterUser) { $fillUsers[] = $u; break; } }
+    } elseif ($filterRole) {
+        foreach ($users as $u) { if ($u['role'] === $filterRole) $fillUsers[] = $u; }
+    } else {
+        $fillUsers = $users;
+    }
+
+    // Generate absent rows for every working day (Mon–Sat) with no log
+    $absentRows = [];
+    $d = new DateTime($filterFrom);
+    $end = new DateTime($filterTo);
+    while ($d <= $end) {
+        $dow  = (int)$d->format('N'); // 1=Mon … 7=Sun
+        $date = $d->format('Y-m-d');
+        if ($dow <= 6) { // Mon–Sat
+            foreach ($fillUsers as $u) {
+                $key = $u['id'].'_'.$date;
+                if (!isset($existing[$key])) {
+                    $absentRows[] = [
+                        'id'            => null,
+                        'user_id'       => $u['id'],
+                        'user_name'     => $u['name'],
+                        'user_role'     => $u['role'],
+                        'log_date'      => $date,
+                        'clock_in'      => null,
+                        'clock_out'     => null,
+                        'work_seconds'  => 0,
+                        'status'        => 'absent',
+                        'location_name' => '—',
+                    ];
+                }
+            }
+        }
+        $d->modify('+1 day');
+    }
+
+    // Merge and sort
+    $allRows = array_merge($logs, $absentRows);
+    usort($allRows, fn($a,$b) => $a['log_date'] <=> $b['log_date'] ?: strcmp($a['user_name'], $b['user_name']));
+
+} catch (PDOException $e) {
+    $dbError = $e->getMessage();
+    error_log('Admin attendance error: ' . $e->getMessage());
+}
+
+// ── Export CSV ───────────────────────────────────────────────
+if ($export && empty($dbError)) {
+    $fname = 'attendance_' . $filterFrom . '_to_' . $filterTo . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $fname . '"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Date', 'Employee', 'Role', 'Clock In', 'Clock Out', 'Work Hours', 'Status', 'Location']);
+    foreach ($allRows as $r) {
+        $hrs = $r['work_seconds'] ? fmtHrs($r['work_seconds']) : '—';
+        fputcsv($out, [
+            date('d M Y', strtotime($r['log_date'])),
+            $r['user_name'],
+            ucfirst($r['user_role']),
+            fmtTime($r['clock_in']),
+            fmtTime($r['clock_out']),
+            $hrs,
+            ucfirst(str_replace('_', ' ', $r['status'])),
+            $r['location_name'] ?? '—',
+        ]);
+    }
+    fclose($out); exit;
+}
+
+$statusMap = ['present'=>'badge-green','remote'=>'badge-blue','half_day'=>'badge-yellow','late'=>'badge-yellow','absent'=>'badge-red'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -125,7 +149,7 @@ if (!function_exists('fmtHrs')) {
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">Attendance</span>
-      <span class="page-breadcrumb">Logs & Location Management</span>
+      <span class="page-breadcrumb">Logs &amp; Reports</span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Admin</span>
@@ -139,17 +163,14 @@ if (!function_exists('fmtHrs')) {
     <?php if($successMsg): ?>
       <div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div>
     <?php endif; ?>
-    <?php if($errorMsg): ?>
-      <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
-    <?php endif; ?>
     <?php if($dbError): ?>
       <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Database error: <?= htmlspecialchars($dbError) ?></div>
     <?php endif; ?>
 
     <div class="page-header" style="margin-bottom:20px;">
       <div class="page-header-text">
-        <h1>Attendance</h1>
-        <p>View and filter employee &amp; manager attendance logs.</p>
+        <h1>Attendance Logs</h1>
+        <p>Filter by date range and employee. Absent days are auto-filled for working days (Mon–Sat).</p>
       </div>
       <div class="page-header-actions">
         <a href="locations.php" class="btn btn-secondary">
@@ -159,303 +180,176 @@ if (!function_exists('fmtHrs')) {
       </div>
     </div>
 
-    <!-- ── LOGS TAB ── -->
-    <div id="tab-logs">
-      <!-- Filters -->
-      <div class="card" style="margin-bottom:16px;">
-        <div class="card-body" style="padding:16px 20px;">
-          <form method="GET" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-            <div class="form-group" style="margin:0;min-width:160px;">
-              <label style="font-size:12px;">Month</label>
-              <input type="month" name="date" class="form-control" value="<?= htmlspecialchars($filterDate) ?>">
-            </div>
-            <div class="form-group" style="margin:0;min-width:200px;">
-              <label style="font-size:12px;">Employee / Manager</label>
-              <select name="user_id" class="form-control">
-                <option value="">All Users</option>
-                <?php foreach($users as $u): ?>
-                  <option value="<?= $u['id'] ?>" <?= $filterUser==$u['id']?'selected':'' ?>>
-                    <?= htmlspecialchars($u['name']) ?> (<?= $u['role'] ?>)
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            <div class="form-group" style="margin:0;min-width:140px;">
-              <label style="font-size:12px;">Role</label>
-              <select name="role" class="form-control">
-                <option value="">All Roles</option>
-                <option value="employee" <?= $filterRole==='employee'?'selected':'' ?>>Employee</option>
-                <option value="manager"  <?= $filterRole==='manager' ?'selected':'' ?>>Manager</option>
-              </select>
-            </div>
-            <button type="submit" class="btn btn-primary" style="margin-bottom:1px;">
+    <!-- Filters -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body" style="padding:16px 20px;">
+        <form method="GET" id="filterForm" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+          <div class="form-group" style="margin:0;min-width:150px;">
+            <label style="font-size:12px;font-weight:600;">From Date</label>
+            <input type="date" name="from" class="form-control" value="<?= htmlspecialchars($filterFrom) ?>">
+          </div>
+          <div class="form-group" style="margin:0;min-width:150px;">
+            <label style="font-size:12px;font-weight:600;">To Date</label>
+            <input type="date" name="to" class="form-control" value="<?= htmlspecialchars($filterTo) ?>">
+          </div>
+          <div class="form-group" style="margin:0;min-width:210px;">
+            <label style="font-size:12px;font-weight:600;">Employee / Manager</label>
+            <select name="user_id" class="form-control">
+              <option value="">All Users</option>
+              <?php foreach($users as $u): ?>
+                <option value="<?= $u['id'] ?>" <?= $filterUser==$u['id']?'selected':'' ?>>
+                  <?= htmlspecialchars($u['name']) ?> (<?= $u['role'] ?>)
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;min-width:130px;">
+            <label style="font-size:12px;font-weight:600;">Role</label>
+            <select name="role" class="form-control">
+              <option value="">All Roles</option>
+              <option value="employee" <?= $filterRole==='employee'?'selected':'' ?>>Employee</option>
+              <option value="manager"  <?= $filterRole==='manager' ?'selected':'' ?>>Manager</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-end;">
+            <button type="submit" class="btn btn-primary">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               Filter
             </button>
-            <a href="attendance.php" class="btn btn-secondary" style="margin-bottom:1px;">Reset</a>
-          </form>
+            <a href="attendance.php" class="btn btn-secondary">Reset</a>
+            <a href="attendance.php?from=<?= urlencode($filterFrom) ?>&to=<?= urlencode($filterTo) ?>&user_id=<?= $filterUser ?>&role=<?= urlencode($filterRole) ?>&export=1"
+               class="btn btn-success">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Quick date range shortcuts -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <?php
+      $shortcuts = [
+        'Today'        => [date('Y-m-d'), date('Y-m-d')],
+        'This Week'    => [date('Y-m-d', strtotime('monday this week')), date('Y-m-d')],
+        'This Month'   => [date('Y-m-01'), date('Y-m-d')],
+        'Last Month'   => [date('Y-m-01', strtotime('first day of last month')), date('Y-m-t', strtotime('last day of last month'))],
+      ];
+      foreach ($shortcuts as $label => [$f, $t]):
+      ?>
+        <a href="attendance.php?from=<?= $f ?>&to=<?= $t ?>&user_id=<?= $filterUser ?>&role=<?= urlencode($filterRole) ?>"
+           class="btn btn-ghost btn-sm <?= ($filterFrom===$f && $filterTo===$t)?'active':'' ?>"
+           style="<?= ($filterFrom===$f && $filterTo===$t)?'background:var(--brand-light);color:var(--brand);border-color:var(--brand);':'' ?>">
+          <?= $label ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+
+    <!-- Stats summary -->
+    <?php
+    $totalRows    = count($allRows);
+    $presentCount = count(array_filter($allRows, fn($r) => in_array($r['status'], ['present','remote','late'])));
+    $absentCount  = count(array_filter($allRows, fn($r) => $r['status'] === 'absent'));
+    $lateCount    = count(array_filter($allRows, fn($r) => $r['status'] === 'late'));
+    $totalSec     = array_sum(array_column($allRows, 'work_seconds'));
+    ?>
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-value"><?= $totalRows ?></div><div class="stat-label">Total Records</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--green-bg);color:var(--green);">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-value"><?= $presentCount ?></div><div class="stat-label">Present Days</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-value"><?= $absentCount ?></div><div class="stat-label">Absent Days</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--yellow-bg);color:var(--yellow);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-body"><div class="stat-value"><?= fmtHrs($totalSec) ?></div><div class="stat-label">Total Hours</div></div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <h2>Attendance Records
+          <span style="font-weight:400;color:var(--muted);font-size:13px;">
+            (<?= $filterFrom ?> → <?= $filterTo ?>  ·  <?= count($allRows) ?> records)
+          </span>
+        </h2>
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="attSearch" placeholder="Search name…" oninput="filterAtt(this.value)">
         </div>
       </div>
-
-      <div class="table-wrap">
-        <div class="table-toolbar">
-          <h2>Attendance Logs <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($logs) ?> records)</span></h2>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Employee</th>
-              <th>Role</th>
-              <th>Clock In</th>
-              <th>Clock Out</th>
-              <th>Work Hours</th>
-              <th>Status</th>
-              <th>Location</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php if(empty($logs)): ?>
-              <tr class="empty-row"><td colspan="8">No attendance records for this period.</td></tr>
-            <?php else: foreach($logs as $log):
-              $hrs = $log['work_seconds'] ?? 0;
-              $short = $hrs > 0 && $hrs < 32400; // less than 9h
-              $statusMap = [
-                'present'  => 'badge-green',
-                'remote'   => 'badge-blue',
-                'half_day' => 'badge-yellow',
-                'late'     => 'badge-yellow',
-                'absent'   => 'badge-red',
-              ];
-            ?>
-            <tr>
-              <td class="text-sm font-semibold"><?= date('D, d M Y', strtotime($log['log_date'])) ?></td>
-              <td>
-                <div class="td-name"><?= htmlspecialchars($log['user_name']) ?></div>
-              </td>
-              <td><span class="badge badge-gray"><?= ucfirst($log['user_role']) ?></span></td>
-              <td class="text-sm"><?= fmtTime($log['clock_in']) ?></td>
-              <td class="text-sm"><?= fmtTime($log['clock_out']) ?></td>
-              <td>
+      <table id="attTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Employee</th>
+            <th>Role</th>
+            <th>Clock In</th>
+            <th>Clock Out</th>
+            <th>Work Hours</th>
+            <th>Status</th>
+            <th>Location</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php if(empty($allRows)): ?>
+            <tr class="empty-row"><td colspan="8">No records for this period.</td></tr>
+          <?php else: foreach($allRows as $r):
+            $hrs   = $r['work_seconds'] ?? 0;
+            $short = $hrs > 0 && $hrs < 32400;
+            $isAbsent = $r['status'] === 'absent';
+          ?>
+          <tr style="<?= $isAbsent ? 'background:#fff8f8;' : '' ?>">
+            <td class="text-sm font-semibold"><?= date('D, d M Y', strtotime($r['log_date'])) ?></td>
+            <td>
+              <div class="td-user">
+                <div class="td-avatar" style="<?= $isAbsent?'background:var(--red-bg);color:var(--red);':'' ?>">
+                  <?= strtoupper(substr($r['user_name'],0,1)) ?>
+                </div>
+                <div class="td-name"><?= htmlspecialchars($r['user_name']) ?></div>
+              </div>
+            </td>
+            <td><span class="badge badge-gray"><?= ucfirst($r['user_role']) ?></span></td>
+            <td class="text-sm"><?= fmtTime($r['clock_in']) ?></td>
+            <td class="text-sm"><?= fmtTime($r['clock_out']) ?></td>
+            <td>
+              <?php if($isAbsent): ?>
+                <span style="font-size:12.5px;color:var(--muted-light);">—</span>
+              <?php else: ?>
                 <span style="font-size:13px;font-weight:600;color:<?= $short?'var(--red)':'var(--green)' ?>;">
                   <?= fmtHrs($hrs) ?>
                 </span>
                 <?php if($short && $hrs > 0): ?>
-                  <span style="font-size:11px;color:var(--red);margin-left:4px;">(&lt;9h)</span>
+                  <span style="font-size:11px;color:var(--red);margin-left:3px;">(&lt;9h)</span>
                 <?php endif; ?>
-              </td>
-              <td><span class="badge <?= $statusMap[$log['status']] ?? 'badge-gray' ?>"><?= ucfirst(str_replace('_',' ',$log['status'])) ?></span></td>
-              <td class="text-muted text-sm"><?= htmlspecialchars($log['location_name'] ?? '—') ?></td>
-            </tr>
-            <?php endforeach; endif; ?>
-          </tbody>
-        </table>
-      </div>
-    </div><!-- /tab-logs -->
-
-  </div>
-</div>
-</div>
-
-<script>
-// No tabs needed — locations moved to locations.php
-</script>
-</body>
-</html>
-
-      <!-- Add location form -->
-      <div style="display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start;margin-bottom:24px;">
-        <div class="card">
-          <div class="card-header"><div><h2>Add Office Location</h2><p>GPS coordinates + allowed radius</p></div></div>
-          <div class="card-body">
-            <form method="POST">
-              <input type="hidden" name="action" value="add_location">
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Location Name <span class="req">*</span></label>
-                <input type="text" name="name" class="form-control" placeholder="e.g. Head Office Mumbai" required>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Address</label>
-                <input type="text" name="address" class="form-control" placeholder="Full address">
-              </div>
-              <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
-                <div class="form-group">
-                  <label>Latitude</label>
-                  <input type="number" step="0.0000001" name="latitude" id="inp_lat" class="form-control" placeholder="19.0760">
-                </div>
-                <div class="form-group">
-                  <label>Longitude</label>
-                  <input type="number" step="0.0000001" name="longitude" id="inp_lng" class="form-control" placeholder="72.8777">
-                </div>
-              </div>
-              <div class="form-group" style="margin-bottom:14px;">
-                <label>Allowed Radius (metres)</label>
-                <input type="number" name="radius_m" class="form-control" value="200" min="50" max="5000">
-                <span style="font-size:11.5px;color:var(--muted-light);">Employees must be within this distance to clock in</span>
-              </div>
-              <div class="form-check" style="margin-bottom:16px;">
-                <input type="checkbox" name="is_remote" id="is_remote" onchange="toggleGps(this)">
-                <label for="is_remote">Remote / Work from Home (no GPS check)</label>
-              </div>
-              <button type="button" class="btn btn-secondary btn-sm" style="margin-bottom:12px;width:100%;" onclick="getMyLocation()">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
-                Use My Current Location
-              </button>
-              <button type="submit" class="btn btn-primary" style="width:100%;">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Add Location
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <!-- Locations list -->
-        <div class="table-wrap">
-          <div class="table-toolbar"><h2>Office Locations</h2></div>
-          <table>
-            <thead>
-              <tr><th>Name</th><th>Address</th><th>Coordinates</th><th>Radius</th><th>Type</th><th>Status</th><th>Assigned</th><th></th></tr>
-            </thead>
-            <tbody>
-              <?php if(empty($locations)): ?>
-                <tr class="empty-row"><td colspan="8">No locations added yet.</td></tr>
-              <?php else: foreach($locations as $loc):
-                // Count assigned users
-                $assignedCount = $db->prepare("SELECT COUNT(*) FROM user_locations WHERE location_id = ?");
-                $assignedCount->execute([$loc['id']]);
-                $assignedCount = (int)$assignedCount->fetchColumn();
-              ?>
-              <tr>
-                <td class="font-semibold"><?= htmlspecialchars($loc['name']) ?></td>
-                <td class="text-muted text-sm"><?= htmlspecialchars($loc['address'] ?: '—') ?></td>
-                <td class="text-sm" style="font-family:monospace;color:var(--muted);"><?= $loc['is_remote'] ? '—' : $loc['latitude'].', '.$loc['longitude'] ?></td>
-                <td class="text-sm text-muted"><?= $loc['is_remote'] ? '—' : $loc['radius_m'].'m' ?></td>
-                <td><?= $loc['is_remote'] ? '<span class="badge badge-blue">Remote</span>' : '<span class="badge badge-brand">Office</span>' ?></td>
-                <td><span class="badge <?= $loc['is_active']?'badge-green':'badge-red' ?>"><?= $loc['is_active']?'Active':'Inactive' ?></span></td>
-                <td>
-                  <?php if($assignedCount > 0): ?>
-                    <span class="badge badge-gray"><?= $assignedCount ?> user<?= $assignedCount>1?'s':'' ?></span>
-                  <?php else: ?>
-                    <span style="font-size:12px;color:var(--muted-light);">Global</span>
-                  <?php endif; ?>
-                </td>
-                <td>
-                  <div style="display:flex;gap:6px;">
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="openAssign(<?= $loc['id'] ?>, '<?= addslashes($loc['name']) ?>')">Assign</button>
-                    <form method="POST" style="display:inline;">
-                      <input type="hidden" name="action" value="toggle_location">
-                      <input type="hidden" name="location_id" value="<?= $loc['id'] ?>">
-                      <button type="submit" class="btn btn-ghost btn-sm"><?= $loc['is_active']?'Disable':'Enable' ?></button>
-                    </form>
-                    <?php if($loc['id'] != 1): ?>
-                    <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this location?')">
-                      <input type="hidden" name="action" value="delete_location">
-                      <input type="hidden" name="location_id" value="<?= $loc['id'] ?>">
-                      <button type="submit" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;">Delete</button>
-                    </form>
-                    <?php endif; ?>
-                  </div>
-                </td>
-              </tr>
-              <?php endforeach; endif; ?>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Assign Users section -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h2>User Location Assignments</h2>
-            <p>Select employees/managers and assign them to a specific location. Users with no assignment can clock in from any active location.</p>
-          </div>
-        </div>
-        <div class="card-body">
-          <form method="POST" id="assignForm">
-            <input type="hidden" name="action" value="assign_locations">
-            <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;">
-              <div class="form-group" style="margin:0;min-width:220px;">
-                <label>Assign to Location</label>
-                <select name="assign_location_id" id="assignLocSelect" class="form-control" required>
-                  <option value="">Select location…</option>
-                  <?php foreach($locations as $loc): if(!$loc['is_active']) continue; ?>
-                    <option value="<?= $loc['id'] ?>"><?= htmlspecialchars($loc['name']) ?> <?= $loc['is_remote']?'(Remote)':'' ?></option>
-                  <?php endforeach; ?>
-                </select>
-              </div>
-              <button type="submit" class="btn btn-primary" style="margin-bottom:1px;">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Assign Selected
-              </button>
-              <button type="button" class="btn btn-secondary" onclick="clearAssignSelection()" style="margin-bottom:1px;">Clear Selection</button>
-            </div>
-
-            <!-- User table with checkboxes -->
-            <div class="table-wrap" style="box-shadow:none;border:1px solid var(--border);">
-              <div class="table-toolbar" style="padding:12px 16px;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <input type="checkbox" id="selectAllUsers" style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;" onchange="toggleAllUsers(this)">
-                  <span style="font-size:13px;font-weight:600;">Select All</span>
-                </div>
-                <div class="search-box" style="min-width:200px;">
-                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  <input type="text" placeholder="Search users…" oninput="filterAssignTable(this.value)">
-                </div>
-              </div>
-              <table id="assignTable">
-                <thead>
-                  <tr>
-                    <th style="width:40px;"></th>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Current Assignment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <?php foreach($users as $u):
-                    // Get current assigned locations for this user
-                    $curLocs = $db->prepare("SELECT al.name, al.is_remote FROM user_locations ul JOIN attendance_locations al ON ul.location_id = al.id WHERE ul.user_id = ?");
-                    $curLocs->execute([$u['id']]);
-                    $curLocs = $curLocs->fetchAll();
-                  ?>
-                  <tr class="assign-row" data-name="<?= htmlspecialchars(strtolower($u['name'])) ?>">
-                    <td style="padding-left:16px;">
-                      <input type="checkbox" name="user_ids[]" value="<?= $u['id'] ?>" class="user-check"
-                        style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;">
-                    </td>
-                    <td>
-                      <div class="td-user">
-                        <div class="td-avatar"><?= strtoupper(substr($u['name'],0,1)) ?></div>
-                        <div>
-                          <div class="td-name"><?= htmlspecialchars($u['name']) ?></div>
-                          <div class="td-sub"><?= htmlspecialchars($u['email'] ?? '') ?></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td><span class="badge <?= $u['role']==='manager'?'badge-brand':'badge-gray' ?>"><?= ucfirst($u['role']) ?></span></td>
-                    <td>
-                      <?php if(empty($curLocs)): ?>
-                        <span style="font-size:12.5px;color:var(--muted-light);">Global (any location)</span>
-                      <?php else: ?>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                          <?php foreach($curLocs as $cl): ?>
-                            <span class="badge <?= $cl['is_remote']?'badge-blue':'badge-brand' ?>" style="font-size:11px;">
-                              <?= htmlspecialchars($cl['name']) ?>
-                            </span>
-                          <?php endforeach; ?>
-                        </div>
-                      <?php endif; ?>
-                    </td>
-                  </tr>
-                  <?php endforeach; ?>
-                </tbody>
-              </table>
-            </div>
-          </form>
-        </div>
-      </div>
-
+              <?php endif; ?>
+            </td>
+            <td>
+              <span class="badge <?= $statusMap[$r['status']] ?? 'badge-gray' ?>">
+                <?= ucfirst(str_replace('_',' ',$r['status'])) ?>
+              </span>
+            </td>
+            <td class="text-muted text-sm"><?= htmlspecialchars($r['location_name'] ?? '—') ?></td>
+          </tr>
+          <?php endforeach; endif; ?>
+        </tbody>
+      </table>
     </div>
 
   </div>
@@ -463,50 +357,12 @@ if (!function_exists('fmtHrs')) {
 </div>
 
 <script>
-function switchTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i === (tab==='logs'?0:1)));
-  document.getElementById('tab-logs').style.display       = tab === 'logs'      ? 'block' : 'none';
-  document.getElementById('tab-locations').style.display  = tab === 'locations' ? 'block' : 'none';
-}
-
-function getMyLocation() {
-  if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
-  navigator.geolocation.getCurrentPosition(pos => {
-    document.getElementById('inp_lat').value = pos.coords.latitude.toFixed(7);
-    document.getElementById('inp_lng').value = pos.coords.longitude.toFixed(7);
-  }, () => alert('Could not get location. Please enter manually.'));
-}
-
-function toggleGps(cb) {
-  const gpsFields = document.querySelectorAll('#inp_lat, #inp_lng');
-  gpsFields.forEach(f => { f.disabled = cb.checked; f.required = !cb.checked; });
-}
-
-function toggleAllUsers(master) {
-  document.querySelectorAll('.user-check').forEach(cb => {
-    if (cb.closest('tr').style.display !== 'none') cb.checked = master.checked;
-  });
-}
-
-function clearAssignSelection() {
-  document.querySelectorAll('.user-check').forEach(cb => cb.checked = false);
-  document.getElementById('selectAllUsers').checked = false;
-}
-
-function filterAssignTable(q) {
+function filterAtt(q) {
   q = q.toLowerCase();
-  document.querySelectorAll('.assign-row').forEach(row => {
-    row.style.display = !q || row.dataset.name.includes(q) ? '' : 'none';
+  document.querySelectorAll('#attTable tbody tr:not(.empty-row)').forEach(r => {
+    r.style.display = !q || r.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 }
-
-function openAssign(locId, locName) {
-  document.getElementById('assignLocSelect').value = locId;
-  switchTab('locations');
-  document.getElementById('assignLocSelect').scrollIntoView({behavior:'smooth', block:'center'});
-}
-
-if (location.hash === '#locations') switchTab('locations');
 </script>
 </body>
 </html>
