@@ -157,10 +157,10 @@ tr:last-child td {
 <div class="main">
     <div class="page-header">
         <h1>Employees</h1>
-        <button class="btn-primary">
+        <a href="add_employee.php" class="btn-primary">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Add Employee
-        </button>
+        </a>
     </div>
 
     <div class="table-container">
