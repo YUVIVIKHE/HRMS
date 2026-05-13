@@ -30,11 +30,25 @@ function haversine($lat1, $lng1, $lat2, $lng2): float {
     return $R * 2 * atan2(sqrt($a), sqrt(1-$a));
 }
 
-// ── Find matching active location ────────────────────────────
-function findLocation(PDO $db, ?float $lat, ?float $lng): ?array {
-    $locations = $db->query("SELECT * FROM attendance_locations WHERE is_active = 1 ORDER BY is_remote ASC")->fetchAll();
+// ── Find matching location for this user ─────────────────────
+function findLocation(PDO $db, int $uid, ?float $lat, ?float $lng): ?array {
+    // Get locations assigned to this user; fall back to global (unassigned) locations
+    $assigned = $db->prepare("
+        SELECT al.* FROM attendance_locations al
+        INNER JOIN user_locations ul ON al.id = ul.location_id
+        WHERE ul.user_id = ? AND al.is_active = 1
+        ORDER BY al.is_remote ASC
+    ");
+    $assigned->execute([$uid]);
+    $locations = $assigned->fetchAll();
+
+    // If no specific assignment, use all active locations (global fallback)
+    if (empty($locations)) {
+        $locations = $db->query("SELECT * FROM attendance_locations WHERE is_active = 1 ORDER BY is_remote ASC")->fetchAll();
+    }
+
     foreach ($locations as $loc) {
-        if ($loc['is_remote']) return $loc; // remote always matches
+        if ($loc['is_remote']) return $loc;
         if ($lat === null || $lng === null) continue;
         $dist = haversine($lat, $lng, (float)$loc['latitude'], (float)$loc['longitude']);
         if ($dist <= $loc['radius_m']) return $loc;
@@ -52,7 +66,7 @@ if ($action === 'clock_in') {
         echo json_encode(['ok' => false, 'msg' => 'Already clocked in today at ' . date('h:i A', strtotime($row['clock_in'])) . '.']); exit;
     }
 
-    $loc = findLocation($db, $lat, $lng);
+    $loc = findLocation($db, $uid, $lat, $lng);
     if (!$loc) {
         echo json_encode(['ok' => false, 'msg' => 'You are not within any registered office location. Contact admin if you are working remotely.']); exit;
     }

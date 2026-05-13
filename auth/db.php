@@ -68,6 +68,18 @@ function getDB(): PDO {
                   CONSTRAINT `fk_att_location` FOREIGN KEY (`location_id`) REFERENCES `attendance_locations`(`id`) ON DELETE SET NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `user_locations` (
+                  `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `user_id`     INT UNSIGNED NOT NULL,
+                  `location_id` INT UNSIGNED NOT NULL,
+                  `assigned_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uq_user_loc` (`user_id`,`location_id`),
+                  CONSTRAINT `fk_ul_user` FOREIGN KEY (`user_id`)     REFERENCES `users`(`id`) ON DELETE CASCADE,
+                  CONSTRAINT `fk_ul_loc`  FOREIGN KEY (`location_id`) REFERENCES `attendance_locations`(`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
         } catch (PDOException $e) {
             error_log('DB Connection failed: ' . $e->getMessage());
             header('Location: ../index.php?error=server');

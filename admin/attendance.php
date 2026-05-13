@@ -39,6 +39,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['flash_success'] = "Location deleted.";
         header("Location: attendance.php"); exit;
     }
+
+    if ($action === 'assign_locations') {
+        $locId   = (int)($_POST['assign_location_id'] ?? 0);
+        $userIds = array_map('intval', $_POST['user_ids'] ?? []);
+        if ($locId > 0 && !empty($userIds)) {
+            $stmt = $db->prepare("INSERT IGNORE INTO user_locations (user_id, location_id) VALUES (?, ?)");
+            foreach ($userIds as $uid) {
+                $stmt->execute([$uid, $locId]);
+            }
+            $_SESSION['flash_success'] = count($userIds) . " user(s) assigned to location.";
+        }
+        header("Location: attendance.php#locations"); exit;
+    }
+
+    if ($action === 'remove_user_location') {
+        $uid = (int)$_POST['user_id'];
+        $lid = (int)$_POST['location_id'];
+        $db->prepare("DELETE FROM user_locations WHERE user_id = ? AND location_id = ?")->execute([$uid, $lid]);
+        header("Location: attendance.php#locations"); exit;
+    }
 }
 
 // ── Filters ──────────────────────────────────────────────────
@@ -72,7 +92,7 @@ try {
     $logs = $stmt->fetchAll();
 
     $locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote DESC, name ASC")->fetchAll();
-    $users     = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') ORDER BY name COLLATE utf8mb4_general_ci")->fetchAll();
+    $users     = $db->query("SELECT id, name, email, role FROM users WHERE role IN ('employee','manager') ORDER BY name COLLATE utf8mb4_general_ci")->fetchAll();
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
     error_log('Admin attendance error: ' . $e->getMessage());
@@ -233,11 +253,11 @@ if (!function_exists('fmtHrs')) {
 
     <!-- ── LOCATIONS TAB ── -->
     <div id="tab-locations" style="display:none;">
-      <div style="display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start;">
 
-        <!-- Add location form -->
+      <!-- Add location form -->
+      <div style="display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start;margin-bottom:24px;">
         <div class="card">
-          <div class="card-header"><div><h2>Add Office Location</h2><p>Set GPS coordinates and allowed radius</p></div></div>
+          <div class="card-header"><div><h2>Add Office Location</h2><p>GPS coordinates + allowed radius</p></div></div>
           <div class="card-body">
             <form method="POST">
               <input type="hidden" name="action" value="add_location">
@@ -251,12 +271,12 @@ if (!function_exists('fmtHrs')) {
               </div>
               <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
                 <div class="form-group">
-                  <label>Latitude <span class="req">*</span></label>
-                  <input type="number" step="0.0000001" name="latitude" id="inp_lat" class="form-control" placeholder="19.0760" required>
+                  <label>Latitude</label>
+                  <input type="number" step="0.0000001" name="latitude" id="inp_lat" class="form-control" placeholder="19.0760">
                 </div>
                 <div class="form-group">
-                  <label>Longitude <span class="req">*</span></label>
-                  <input type="number" step="0.0000001" name="longitude" id="inp_lng" class="form-control" placeholder="72.8777" required>
+                  <label>Longitude</label>
+                  <input type="number" step="0.0000001" name="longitude" id="inp_lng" class="form-control" placeholder="72.8777">
                 </div>
               </div>
               <div class="form-group" style="margin-bottom:14px;">
@@ -264,9 +284,9 @@ if (!function_exists('fmtHrs')) {
                 <input type="number" name="radius_m" class="form-control" value="200" min="50" max="5000">
                 <span style="font-size:11.5px;color:var(--muted-light);">Employees must be within this distance to clock in</span>
               </div>
-              <div class="form-check" style="margin-bottom:20px;">
-                <input type="checkbox" name="is_remote" id="is_remote">
-                <label for="is_remote">Remote / Free location (no GPS check)</label>
+              <div class="form-check" style="margin-bottom:16px;">
+                <input type="checkbox" name="is_remote" id="is_remote" onchange="toggleGps(this)">
+                <label for="is_remote">Remote / Work from Home (no GPS check)</label>
               </div>
               <button type="button" class="btn btn-secondary btn-sm" style="margin-bottom:12px;width:100%;" onclick="getMyLocation()">
                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
@@ -285,41 +305,34 @@ if (!function_exists('fmtHrs')) {
           <div class="table-toolbar"><h2>Office Locations</h2></div>
           <table>
             <thead>
-              <tr>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Coordinates</th>
-                <th>Radius</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
+              <tr><th>Name</th><th>Address</th><th>Coordinates</th><th>Radius</th><th>Type</th><th>Status</th><th>Assigned</th><th></th></tr>
             </thead>
             <tbody>
               <?php if(empty($locations)): ?>
-                <tr class="empty-row"><td colspan="7">No locations added yet.</td></tr>
-              <?php else: foreach($locations as $loc): ?>
+                <tr class="empty-row"><td colspan="8">No locations added yet.</td></tr>
+              <?php else: foreach($locations as $loc):
+                // Count assigned users
+                $assignedCount = $db->prepare("SELECT COUNT(*) FROM user_locations WHERE location_id = ?");
+                $assignedCount->execute([$loc['id']]);
+                $assignedCount = (int)$assignedCount->fetchColumn();
+              ?>
               <tr>
                 <td class="font-semibold"><?= htmlspecialchars($loc['name']) ?></td>
                 <td class="text-muted text-sm"><?= htmlspecialchars($loc['address'] ?: '—') ?></td>
-                <td class="text-sm" style="font-family:monospace;color:var(--muted);">
-                  <?= $loc['is_remote'] ? '—' : $loc['latitude'].', '.$loc['longitude'] ?>
-                </td>
+                <td class="text-sm" style="font-family:monospace;color:var(--muted);"><?= $loc['is_remote'] ? '—' : $loc['latitude'].', '.$loc['longitude'] ?></td>
                 <td class="text-sm text-muted"><?= $loc['is_remote'] ? '—' : $loc['radius_m'].'m' ?></td>
+                <td><?= $loc['is_remote'] ? '<span class="badge badge-blue">Remote</span>' : '<span class="badge badge-brand">Office</span>' ?></td>
+                <td><span class="badge <?= $loc['is_active']?'badge-green':'badge-red' ?>"><?= $loc['is_active']?'Active':'Inactive' ?></span></td>
                 <td>
-                  <?php if($loc['is_remote']): ?>
-                    <span class="badge badge-blue">Remote</span>
+                  <?php if($assignedCount > 0): ?>
+                    <span class="badge badge-gray"><?= $assignedCount ?> user<?= $assignedCount>1?'s':'' ?></span>
                   <?php else: ?>
-                    <span class="badge badge-brand">Office</span>
+                    <span style="font-size:12px;color:var(--muted-light);">Global</span>
                   <?php endif; ?>
                 </td>
                 <td>
-                  <span class="badge <?= $loc['is_active']?'badge-green':'badge-red' ?>">
-                    <?= $loc['is_active']?'Active':'Inactive' ?>
-                  </span>
-                </td>
-                <td>
                   <div style="display:flex;gap:6px;">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="openAssign(<?= $loc['id'] ?>, '<?= addslashes($loc['name']) ?>')">Assign</button>
                     <form method="POST" style="display:inline;">
                       <input type="hidden" name="action" value="toggle_location">
                       <input type="hidden" name="location_id" value="<?= $loc['id'] ?>">
@@ -340,6 +353,100 @@ if (!function_exists('fmtHrs')) {
           </table>
         </div>
       </div>
+
+      <!-- Assign Users section -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>User Location Assignments</h2>
+            <p>Select employees/managers and assign them to a specific location. Users with no assignment can clock in from any active location.</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <form method="POST" id="assignForm">
+            <input type="hidden" name="action" value="assign_locations">
+            <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;">
+              <div class="form-group" style="margin:0;min-width:220px;">
+                <label>Assign to Location</label>
+                <select name="assign_location_id" id="assignLocSelect" class="form-control" required>
+                  <option value="">Select location…</option>
+                  <?php foreach($locations as $loc): if(!$loc['is_active']) continue; ?>
+                    <option value="<?= $loc['id'] ?>"><?= htmlspecialchars($loc['name']) ?> <?= $loc['is_remote']?'(Remote)':'' ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary" style="margin-bottom:1px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Assign Selected
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="clearAssignSelection()" style="margin-bottom:1px;">Clear Selection</button>
+            </div>
+
+            <!-- User table with checkboxes -->
+            <div class="table-wrap" style="box-shadow:none;border:1px solid var(--border);">
+              <div class="table-toolbar" style="padding:12px 16px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <input type="checkbox" id="selectAllUsers" style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;" onchange="toggleAllUsers(this)">
+                  <span style="font-size:13px;font-weight:600;">Select All</span>
+                </div>
+                <div class="search-box" style="min-width:200px;">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input type="text" placeholder="Search users…" oninput="filterAssignTable(this.value)">
+                </div>
+              </div>
+              <table id="assignTable">
+                <thead>
+                  <tr>
+                    <th style="width:40px;"></th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Current Assignment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php foreach($users as $u):
+                    // Get current assigned locations for this user
+                    $curLocs = $db->prepare("SELECT al.name, al.is_remote FROM user_locations ul JOIN attendance_locations al ON ul.location_id = al.id WHERE ul.user_id = ?");
+                    $curLocs->execute([$u['id']]);
+                    $curLocs = $curLocs->fetchAll();
+                  ?>
+                  <tr class="assign-row" data-name="<?= htmlspecialchars(strtolower($u['name'])) ?>">
+                    <td style="padding-left:16px;">
+                      <input type="checkbox" name="user_ids[]" value="<?= $u['id'] ?>" class="user-check"
+                        style="width:15px;height:15px;accent-color:var(--brand);cursor:pointer;">
+                    </td>
+                    <td>
+                      <div class="td-user">
+                        <div class="td-avatar"><?= strtoupper(substr($u['name'],0,1)) ?></div>
+                        <div>
+                          <div class="td-name"><?= htmlspecialchars($u['name']) ?></div>
+                          <div class="td-sub"><?= htmlspecialchars($u['email'] ?? '') ?></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span class="badge <?= $u['role']==='manager'?'badge-brand':'badge-gray' ?>"><?= ucfirst($u['role']) ?></span></td>
+                    <td>
+                      <?php if(empty($curLocs)): ?>
+                        <span style="font-size:12.5px;color:var(--muted-light);">Global (any location)</span>
+                      <?php else: ?>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                          <?php foreach($curLocs as $cl): ?>
+                            <span class="badge <?= $cl['is_remote']?'badge-blue':'badge-brand' ?>" style="font-size:11px;">
+                              <?= htmlspecialchars($cl['name']) ?>
+                            </span>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php endif; ?>
+                    </td>
+                  </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </form>
+        </div>
+      </div>
+
     </div>
 
   </div>
@@ -361,7 +468,35 @@ function getMyLocation() {
   }, () => alert('Could not get location. Please enter manually.'));
 }
 
-// Auto-switch to locations tab if hash
+function toggleGps(cb) {
+  const gpsFields = document.querySelectorAll('#inp_lat, #inp_lng');
+  gpsFields.forEach(f => { f.disabled = cb.checked; f.required = !cb.checked; });
+}
+
+function toggleAllUsers(master) {
+  document.querySelectorAll('.user-check').forEach(cb => {
+    if (cb.closest('tr').style.display !== 'none') cb.checked = master.checked;
+  });
+}
+
+function clearAssignSelection() {
+  document.querySelectorAll('.user-check').forEach(cb => cb.checked = false);
+  document.getElementById('selectAllUsers').checked = false;
+}
+
+function filterAssignTable(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.assign-row').forEach(row => {
+    row.style.display = !q || row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+function openAssign(locId, locName) {
+  document.getElementById('assignLocSelect').value = locId;
+  switchTab('locations');
+  document.getElementById('assignLocSelect').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
 if (location.hash === '#locations') switchTab('locations');
 </script>
 </body>
