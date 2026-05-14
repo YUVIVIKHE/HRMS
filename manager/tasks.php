@@ -157,30 +157,6 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       </div></div>
     <?php else: ?>
 
-    <!-- Project selector dropdown -->
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap;">
-      <div style="position:relative;min-width:280px;max-width:420px;">
-        <select id="projectSelect" class="form-control" style="font-size:13.5px;font-weight:600;padding:11px 40px 11px 16px;border-radius:var(--radius);border:1.5px solid var(--border);appearance:none;cursor:pointer;background:var(--surface);line-height:1.4;"
-          onchange="location.href='tasks.php?project_id='+this.value">
-          <option value="">— Select Project —</option>
-          <?php foreach($myProjects as $proj):
-            $dot = $proj['status']==='Active'?'🟢':($proj['status']==='Planning'?'🟡':'⚪');
-          ?>
-          <option value="<?= $proj['id'] ?>" <?= $selectedProject==$proj['id']?'selected':'' ?>>
-            <?= $dot ?> <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
-          </option>
-          <?php endforeach; ?>
-        </select>
-        <svg style="position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <?php if($selectedProject): ?>
-        <a href="assign_task.php?project_id=<?= $selectedProject ?>" class="btn btn-primary" style="padding:11px 20px;">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Assign Task
-        </a>
-      <?php endif; ?>
-    </div>
-
     <?php if($selectedProject && $curProj): ?>
 
     <!-- Page header -->
@@ -228,14 +204,33 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
     </div>
     <?php endif; ?>
 
-    <!-- Filters -->
+    <?php endif; ?>
+
+    <!-- Combined filter row: Project selector + Search + Member + Filter/Reset + Assign Task -->
     <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px;">
+      <!-- Project dropdown (drives navigation) -->
+      <div style="position:relative;min-width:240px;flex:0 1 300px;">
+        <select id="projectSelect" class="form-control" style="font-size:13px;font-weight:600;padding:8px 36px 8px 12px;appearance:none;cursor:pointer;background:var(--surface);"
+          onchange="location.href='tasks.php?project_id='+this.value">
+          <option value="">— Select Project —</option>
+          <?php foreach($myProjects as $proj):
+            $dot = $proj['status']==='Active'?'🟢':($proj['status']==='Planning'?'🟡':'⚪');
+          ?>
+          <option value="<?= $proj['id'] ?>" <?= $selectedProject==$proj['id']?'selected':'' ?>>
+            <?= $dot ?> <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
+          </option>
+          <?php endforeach; ?>
+        </select>
+        <svg style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <?php if($selectedProject): ?>
       <input type="hidden" name="project_id" value="<?= $selectedProject ?>">
-      <div class="search-box" style="min-width:220px;flex:0 1 260px;">
+      <div class="search-box" style="min-width:180px;flex:0 1 220px;">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search task or member…">
       </div>
-      <select name="member_id" class="form-control" style="font-size:13px;padding:8px 12px;width:auto;min-width:170px;max-width:220px;">
+      <select name="member_id" class="form-control" style="font-size:13px;padding:8px 12px;width:auto;min-width:150px;max-width:200px;">
         <option value="">All Members</option>
         <?php foreach($teamMembers as $m): ?>
           <option value="<?= $m['id'] ?>" <?= $filterMember==$m['id']?'selected':'' ?>><?= htmlspecialchars($m['name']) ?></option>
@@ -243,6 +238,13 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       </select>
       <button type="submit" class="btn btn-primary btn-sm">Filter</button>
       <a href="tasks.php?project_id=<?= $selectedProject ?>" class="btn btn-ghost btn-sm">Reset</a>
+
+      <!-- Assign Task button pushed to the right -->
+      <a href="assign_task.php?project_id=<?= $selectedProject ?>" class="btn btn-primary btn-sm" style="margin-left:auto;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Assign Task
+      </a>
+      <?php endif; ?>
     </form>
 
     <!-- Task table -->
