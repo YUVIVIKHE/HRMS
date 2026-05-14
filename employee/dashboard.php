@@ -4,15 +4,82 @@ require_once __DIR__ . '/../auth/db.php';
 guardRole('employee');
 $db  = getDB();
 $uid = $_SESSION['user_id'];
+$firstName = explode(' ', $_SESSION['user_name'])[0];
+$today = date('Y-m-d');
+$month = date('Y-m');
 
-$leaveBalance  = 12;
-$pendingLeaves = 1;
-$myTasks       = 5;
-$monthAttend   = 20;
-$myLeaves      = [];
-$myTaskList    = [];
-$attendance    = [];
-$firstName     = explode(' ', $_SESSION['user_name'])[0];
+// ── Leave Balance ────────────────────────────────────────────
+$leaveBalance = 0;
+try {
+    $lb = $db->prepare("SELECT COALESCE(SUM(lb.balance),0) FROM leave_balances lb WHERE lb.user_id=?");
+    $lb->execute([$uid]);
+    $leaveBalance = (float)$lb->fetchColumn();
+} catch (Exception $e) { $leaveBalance = 0; }
+
+// ── Pending Leaves ───────────────────────────────────────────
+$pendingLeaves = 0;
+try {
+    $pl = $db->prepare("SELECT COUNT(*) FROM leave_applications WHERE user_id=? AND status='pending'");
+    $pl->execute([$uid]);
+    $pendingLeaves = (int)$pl->fetchColumn();
+} catch (Exception $e) { $pendingLeaves = 0; }
+
+// ── Open Tasks ───────────────────────────────────────────────
+$myTasks = 0;
+try {
+    $mt = $db->prepare("SELECT COUNT(*) FROM task_assignments WHERE assigned_to=? AND status IN ('Pending','In Progress')");
+    $mt->execute([$uid]);
+    $myTasks = (int)$mt->fetchColumn();
+} catch (Exception $e) { $myTasks = 0; }
+
+// ── Days Present This Month ──────────────────────────────────
+$monthAttend = 0;
+try {
+    $ma = $db->prepare("SELECT COUNT(*) FROM attendance_logs WHERE user_id=? AND DATE_FORMAT(log_date,'%Y-%m')=? AND status IN ('present','remote','late')");
+    $ma->execute([$uid, $month]);
+    $monthAttend = (int)$ma->fetchColumn();
+} catch (Exception $e) { $monthAttend = 0; }
+
+// ── Recent Leaves (last 5) ───────────────────────────────────
+$myLeaves = [];
+try {
+    $rl = $db->prepare("
+        SELECT la.*, lt.name AS leave_type
+        FROM leave_applications la
+        LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
+        WHERE la.user_id=?
+        ORDER BY la.created_at DESC LIMIT 5
+    ");
+    $rl->execute([$uid]);
+    $myLeaves = $rl->fetchAll();
+} catch (Exception $e) { $myLeaves = []; }
+
+// ── Recent Tasks (last 5) ────────────────────────────────────
+$myTaskList = [];
+try {
+    $tl = $db->prepare("
+        SELECT ta.subtask, ta.to_date, ta.hours, ta.status, p.project_name, p.project_code
+        FROM task_assignments ta
+        JOIN projects p ON ta.project_id = p.id
+        WHERE ta.assigned_to=? AND ta.status IN ('Pending','In Progress')
+        ORDER BY ta.to_date ASC LIMIT 5
+    ");
+    $tl->execute([$uid]);
+    $myTaskList = $tl->fetchAll();
+} catch (Exception $e) { $myTaskList = []; }
+
+// ── This Month Attendance (last 10) ─────────────────────────
+$attendance = [];
+try {
+    $at = $db->prepare("
+        SELECT log_date, clock_in, clock_out, work_seconds, status
+        FROM attendance_logs
+        WHERE user_id=? AND DATE_FORMAT(log_date,'%Y-%m')=?
+        ORDER BY log_date DESC LIMIT 10
+    ");
+    $at->execute([$uid, $month]);
+    $attendance = $at->fetchAll();
+} catch (Exception $e) { $attendance = []; }
 
 // Calendar data
 $calMonth = (int)($_GET['cal_month'] ?? date('n'));
@@ -77,7 +144,7 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         </div>
         <div class="stat-body">
-          <div class="stat-value"><?= $leaveBalance ?></div>
+          <div class="stat-value"><?= number_format($leaveBalance,1) ?></div>
           <div class="stat-label">Leave Balance</div>
           <div class="stat-sub">Days remaining</div>
         </div>
@@ -99,7 +166,7 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
         <div class="stat-body">
           <div class="stat-value"><?= $myTasks ?></div>
           <div class="stat-label">Open Tasks</div>
-          <div class="stat-sub">In progress</div>
+          <div class="stat-sub">Pending / In progress</div>
         </div>
       </div>
       <div class="stat-card">
@@ -118,7 +185,7 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
       <!-- Leave History -->
       <div class="table-wrap">
         <div class="table-toolbar">
-          <h2>Leave History</h2>
+          <h2>Recent Leaves</h2>
           <a href="my_leaves.php" class="btn btn-secondary btn-sm">View All</a>
         </div>
         <table>
@@ -128,9 +195,9 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
               <tr class="empty-row"><td colspan="4">No leave requests yet</td></tr>
             <?php else: foreach($myLeaves as $l): ?>
             <tr>
-              <td class="font-semibold"><?= htmlspecialchars($l['leave_type']) ?></td>
-              <td class="text-sm text-muted"><?= date('M d, Y',strtotime($l['start_date'])) ?></td>
-              <td class="text-sm text-muted"><?= date('M d, Y',strtotime($l['end_date'])) ?></td>
+              <td class="font-semibold text-sm"><?= htmlspecialchars($l['leave_type'] ?? 'Leave') ?></td>
+              <td class="text-sm text-muted"><?= date('d M Y', strtotime($l['start_date'])) ?></td>
+              <td class="text-sm text-muted"><?= date('d M Y', strtotime($l['end_date'])) ?></td>
               <td><span class="badge badge-<?= $l['status']==='approved'?'green':($l['status']==='rejected'?'red':'yellow') ?>"><?= ucfirst($l['status']) ?></span></td>
             </tr>
             <?php endforeach; endif; ?>
@@ -147,17 +214,17 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
               <div class="qi" style="background:#d1fae5;color:#059669;"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
               My Leaves
             </a>
-            <a href="attendance.php?action=checkin" class="quick-btn">
+            <a href="attendance.php" class="quick-btn">
               <div class="qi" style="background:var(--blue-bg);color:var(--blue);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-              Check In
+              Attendance
             </a>
             <a href="my_tasks.php" class="quick-btn">
               <div class="qi" style="background:#ede9fe;color:#7c3aed;"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
               My Tasks
             </a>
-            <a href="payslip.php" class="quick-btn">
-              <div class="qi" style="background:var(--yellow-bg);color:var(--yellow);"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-              Payslip
+            <a href="profile.php" class="quick-btn">
+              <div class="qi" style="background:var(--yellow-bg);color:var(--yellow);"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+              My Profile
             </a>
           </div>
         </div>
@@ -165,19 +232,19 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
         <!-- Tasks -->
         <div class="table-wrap">
           <div class="table-toolbar">
-            <h2>My Tasks</h2>
+            <h2>Upcoming Tasks</h2>
             <a href="my_tasks.php" class="btn btn-secondary btn-sm">View All</a>
           </div>
           <table>
-            <thead><tr><th>Task</th><th>Due</th><th>Priority</th></tr></thead>
+            <thead><tr><th>Task</th><th>Project</th><th>Due</th></tr></thead>
             <tbody>
               <?php if(empty($myTaskList)): ?>
-                <tr class="empty-row"><td colspan="3">No tasks assigned</td></tr>
+                <tr class="empty-row"><td colspan="3">No open tasks</td></tr>
               <?php else: foreach($myTaskList as $t): ?>
               <tr>
-                <td class="font-semibold text-sm"><?= htmlspecialchars($t['title']) ?></td>
-                <td class="text-sm text-muted"><?= date('M d',strtotime($t['due_date'])) ?></td>
-                <td><span class="badge badge-<?= strtolower($t['priority'])==='high'?'red':(strtolower($t['priority'])==='medium'?'yellow':'green') ?>"><?= $t['priority'] ?></span></td>
+                <td class="font-semibold text-sm"><?= htmlspecialchars($t['subtask']) ?></td>
+                <td class="text-sm text-muted"><?= htmlspecialchars($t['project_code']) ?></td>
+                <td class="text-sm" style="color:<?= $t['to_date']<$today?'var(--red)':'var(--muted)' ?>;"><?= date('d M', strtotime($t['to_date'])) ?></td>
               </tr>
               <?php endforeach; endif; ?>
             </tbody>
@@ -193,16 +260,24 @@ if ($calYear < 2000 || $calYear > 2100) $calYear = (int)date('Y');
         <a href="attendance.php" class="btn btn-secondary btn-sm">Full Log</a>
       </div>
       <table>
-        <thead><tr><th>Date</th><th>Check In</th><th>Check Out</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Status</th></tr></thead>
         <tbody>
           <?php if(empty($attendance)): ?>
-            <tr class="empty-row"><td colspan="4">No attendance records this month</td></tr>
-          <?php else: foreach($attendance as $a): ?>
+            <tr class="empty-row"><td colspan="5">No attendance records this month</td></tr>
+          <?php else: foreach($attendance as $a):
+            $statusMap = ['present'=>'badge-green','remote'=>'badge-blue','late'=>'badge-yellow','half_day'=>'badge-yellow','absent'=>'badge-red'];
+          ?>
           <tr>
-            <td><?= date('D, M d',strtotime($a['day'])) ?></td>
-            <td><?= $a['check_in']?date('h:i A',strtotime($a['check_in'])):'—' ?></td>
-            <td><?= $a['check_out']?date('h:i A',strtotime($a['check_out'])):'<span style="color:var(--yellow)">Ongoing</span>' ?></td>
-            <td><span class="badge badge-green">Present</span></td>
+            <td class="text-sm font-semibold"><?= date('D, d M', strtotime($a['log_date'])) ?></td>
+            <td class="text-sm"><?= $a['clock_in'] ? date('h:i A', strtotime($a['clock_in'])) : '—' ?></td>
+            <td class="text-sm"><?= $a['clock_out'] ? date('h:i A', strtotime($a['clock_out'])) : '<span style="color:var(--yellow)">Ongoing</span>' ?></td>
+            <td class="text-sm"><?php
+              if ($a['work_seconds']) {
+                $h = floor($a['work_seconds']/3600); $m = floor(($a['work_seconds']%3600)/60);
+                echo sprintf('%dh %02dm', $h, $m);
+              } else echo '—';
+            ?></td>
+            <td><span class="badge <?= $statusMap[$a['status']]??'badge-gray' ?>"><?= ucfirst(str_replace('_',' ',$a['status'])) ?></span></td>
           </tr>
           <?php endforeach; endif; ?>
         </tbody>
