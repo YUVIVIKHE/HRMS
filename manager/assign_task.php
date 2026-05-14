@@ -184,20 +184,7 @@ function calcWorkingDays(string $from, string $to): int {
         <div class="card-body">
           <div class="form-grid">
 
-            <!-- Project -->
-            <div class="form-group">
-              <label>Project <span class="req">*</span></label>
-              <select name="project_id" id="projectSelect" class="form-control" required>
-                <option value="">— Select Project —</option>
-                <?php foreach($myProjects as $p): ?>
-                  <option value="<?= $p['id'] ?>" data-deadline="<?= $p['deadline_date'] ?>" data-hours="<?= $p['total_hours'] ?>" <?= ($preProject==$p['id']||(isset($_POST['project_id'])&&(int)$_POST['project_id']==$p['id']))?'selected':'' ?>>
-                    <?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-
-            <!-- Employee -->
+            <!-- Employee (first) -->
             <div class="form-group">
               <label>Team Member <span class="req">*</span></label>
               <select name="assigned_to" class="form-control" required>
@@ -210,14 +197,14 @@ function calcWorkingDays(string $from, string $to): int {
               </select>
             </div>
 
-            <!-- Date range -->
+            <!-- From/To Date (second) -->
             <div class="form-group">
               <label>From Date <span class="req">*</span></label>
-              <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="calcBudget()">
+              <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="onDatesChanged()">
             </div>
             <div class="form-group">
               <label>To Date <span class="req">*</span></label>
-              <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="calcBudget()">
+              <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="onDatesChanged()">
             </div>
 
           </div>
@@ -226,13 +213,15 @@ function calcWorkingDays(string $from, string $to): int {
           <div class="budget-box" id="budgetBox" style="display:none;margin-top:16px;">
             <span style="font-weight:700;color:var(--brand);" id="budgetLabel"></span>
           </div>
+          <!-- Busy warning -->
+          <div id="busyWarning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-weight:600;color:var(--red);"></div>
 
         </div>
       </div>
 
       <!-- Employee Calendar -->
-      <div class="card" style="margin-bottom:20px;" id="calendarCard" style="display:none;">
-        <div class="card-header"><h2>Employee Schedule</h2><p>Highlighted dates show existing task assignments. Red = fully booked (9 hrs).</p></div>
+      <div class="card" style="margin-bottom:20px;" id="calendarCard">
+        <div class="card-header"><h2>Employee Schedule</h2><p>Highlighted dates show existing task assignments. Red = fully booked (9 hrs). Select employee and dates first.</p></div>
         <div class="card-body">
           <div id="calendarPlaceholder" style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">
             Select an employee to view their schedule.
@@ -250,17 +239,26 @@ function calcWorkingDays(string $from, string $to): int {
         </div>
       </div>
 
-      <!-- Tasks Section -->
+      <!-- Project (after calendar) -->
       <div class="card" style="margin-bottom:20px;">
-        <div class="card-header">
-          <div>
-            <h2>Tasks & Hours</h2>
-            <p>Select tasks and enter hours for each. You decide how many hours per task.</p>
-          </div>
-        </div>
+        <div class="card-header"><h2>Project & Tasks</h2></div>
         <div class="card-body">
 
+          <div class="form-group" style="margin-bottom:20px;max-width:400px;">
+            <label>Project <span class="req">*</span></label>
+            <select name="project_id" id="projectSelect" class="form-control" required>
+              <option value="">— Select Project —</option>
+              <?php foreach($myProjects as $p): ?>
+                <option value="<?= $p['id'] ?>" data-deadline="<?= $p['deadline_date'] ?>" data-hours="<?= $p['total_hours'] ?>" <?= ($preProject==$p['id']||(isset($_POST['project_id'])&&(int)$_POST['project_id']==$p['id']))?'selected':'' ?>>
+                  <?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+
           <!-- Add from predefined list -->
+          <label style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:block;">Tasks & Hours</label>
+          <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Select tasks and enter hours for each. You decide how many hours per task.</p>
           <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
             <select id="subtaskPicker" class="form-control" style="max-width:350px;font-size:13px;">
               <option value="">— Pick a subtask to add —</option>
@@ -382,6 +380,45 @@ function calcBudget() {
   box.style.display = 'block';
   lbl.textContent = days + ' working day(s) × 9 hrs = ' + maxHrs + ' hrs available budget';
   calcTotal(); // re-check limit
+  checkBusyDates();
+}
+
+function onDatesChanged() {
+  calcBudget();
+  loadCalendar();
+}
+
+function checkBusyDates() {
+  const from = document.getElementById('fromDate').value;
+  const to = document.getElementById('toDate').value;
+  const warn = document.getElementById('busyWarning');
+  if (!from || !to || from > to || !empTaskData) { if(warn) warn.style.display='none'; return; }
+
+  // Check if any working day in the range is fully booked (>=9 hrs)
+  let busyDates = [];
+  let d = new Date(from);
+  const e = new Date(to);
+  while (d <= e) {
+    if (d.getDay() !== 0) { // not Sunday
+      const dateStr = d.toISOString().split('T')[0];
+      if (empTaskData[dateStr] && empTaskData[dateStr].total_hrs >= 9) {
+        busyDates.push(dateStr);
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  if (busyDates.length > 0) {
+    warn.style.display = 'block';
+    warn.innerHTML = '⚠ Employee is fully booked (9 hrs) on: <strong>' + busyDates.map(d => {
+      const dt = new Date(d); return dt.toLocaleDateString('en-IN', {day:'numeric',month:'short'});
+    }).join(', ') + '</strong>. Cannot assign tasks on these dates.';
+    document.getElementById('btnSubmit').disabled = true;
+  } else {
+    warn.style.display = 'none';
+    // Re-enable only if budget is also OK
+    calcTotal();
+  }
 }
 
 function workingDays(f, t) {
@@ -410,10 +447,12 @@ let empTaskData = {};
 
 // Listen for employee selection change
 document.querySelector('[name="assigned_to"]').addEventListener('change', function() {
-  if (this.value) loadCalendar();
-  else {
+  if (this.value) {
+    loadCalendar();
+  } else {
     document.getElementById('calendarPlaceholder').style.display = 'block';
     document.getElementById('calendarContainer').style.display = 'none';
+    empTaskData = {};
   }
 });
 
@@ -433,8 +472,9 @@ function loadCalendar() {
     .then(data => {
       empTaskData = data;
       renderCalendar();
+      checkBusyDates();
     })
-    .catch(() => renderCalendar());
+    .catch(() => { empTaskData = {}; renderCalendar(); });
 }
 
 function renderCalendar() {
