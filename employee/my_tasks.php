@@ -133,14 +133,6 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
       <a href="my_tasks.php?mode=day&date=<?= date('Y-m-d', strtotime($filterDate.' +1 day')) ?>" class="btn btn-ghost btn-sm" style="padding:6px 10px;">→</a>
       <a href="my_tasks.php?mode=day&date=<?= $today ?>" class="btn btn-sm <?= ($filterMode==='day'&&$filterDate===$today)?'btn-primary':'btn-ghost' ?>">Today</a>
       <a href="my_tasks.php?mode=all" class="btn btn-sm <?= $filterMode==='all'?'btn-primary':'btn-ghost' ?>">All</a>
-
-      <!-- Date range -->
-      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-        <input type="date" id="rangeFrom" value="<?= htmlspecialchars($filterDateFrom) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
-        <span style="font-size:12px;color:var(--muted);">to</span>
-        <input type="date" id="rangeTo" value="<?= htmlspecialchars($filterDateTo) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
-        <button type="button" class="btn btn-sm btn-secondary" onclick="applyRange()">Go</button>
-      </span>
     </div>
 
     <!-- Project filter -->
