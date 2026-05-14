@@ -20,7 +20,7 @@ if ($filterFrom > $filterTo) $filterFrom = $filterTo;
 
 $logs    = [];
 $users   = [];
-$allRows = [];   // final rows including absent fill-in
+$allRows = [];
 $dbError = null;
 
 if (!function_exists('fmtTime')) {
@@ -56,58 +56,10 @@ try {
         INNER JOIN employees e ON e.email = u.email
         LEFT JOIN attendance_locations loc ON al.location_id = loc.id
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY al.log_date ASC, u.name ASC
+        ORDER BY al.log_date DESC, u.name ASC
     ");
     $stmt->execute($params);
-    $logs = $stmt->fetchAll();
-
-    // ── Fill absent days ─────────────────────────────────────
-    // Build a set of (user_id, log_date) that exist
-    $existing = [];
-    foreach ($logs as $l) $existing[$l['user_id'].'_'.$l['log_date']] = true;
-
-    // Determine which users to fill
-    $fillUsers = [];
-    if ($filterUser > 0) {
-        foreach ($users as $u) { if ($u['id'] === $filterUser) { $fillUsers[] = $u; break; } }
-    } elseif ($filterRole) {
-        foreach ($users as $u) { if ($u['role'] === $filterRole) $fillUsers[] = $u; }
-    } else {
-        $fillUsers = $users;
-    }
-
-    // Generate absent rows for every working day (Mon–Sat) with no log
-    $absentRows = [];
-    $d = new DateTime($filterFrom);
-    $end = new DateTime($filterTo);
-    while ($d <= $end) {
-        $dow  = (int)$d->format('N'); // 1=Mon … 7=Sun
-        $date = $d->format('Y-m-d');
-        if ($dow <= 6) { // Mon–Sat
-            foreach ($fillUsers as $u) {
-                $key = $u['id'].'_'.$date;
-                if (!isset($existing[$key])) {
-                    $absentRows[] = [
-                        'id'            => null,
-                        'user_id'       => $u['id'],
-                        'user_name'     => $u['name'],
-                        'user_role'     => $u['role'],
-                        'log_date'      => $date,
-                        'clock_in'      => null,
-                        'clock_out'     => null,
-                        'work_seconds'  => 0,
-                        'status'        => 'absent',
-                        'location_name' => '—',
-                    ];
-                }
-            }
-        }
-        $d->modify('+1 day');
-    }
-
-    // Merge and sort
-    $allRows = array_merge($logs, $absentRows);
-    usort($allRows, fn($a,$b) => $a['log_date'] <=> $b['log_date'] ?: strcmp($a['user_name'], $b['user_name']));
+    $allRows = $stmt->fetchAll();
 
 } catch (PDOException $e) {
     $dbError = $e->getMessage();
