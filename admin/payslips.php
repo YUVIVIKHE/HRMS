@@ -52,13 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'generat
         $totalEmployerCost = $epsEmployer + $edliEmployer + $epfAdmin + $esiEmployer;
         $netPayable = $totalEarnings - $totalDeductions - $totalEmployerCost;
 
-        // Days payable (working days in month excluding Sundays)
+        // Days payable (actual calendar days in the month)
         $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $gMonth, $gYear);
-        $workDays = 0;
-        for ($d = 1; $d <= $daysInMonth; $d++) {
-            $dow = date('N', mktime(0,0,0,$gMonth,$d,$gYear));
-            if ($dow < 7) $workDays++; // Mon-Sat
-        }
 
         try {
             $stmt->execute([
@@ -70,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'generat
                 $totalEarnings, $monthlyIT, $monthlyPT, $epfEmp, $esiEmp,
                 $epsEmployer, $edliEmployer, $epfAdmin, $esiEmployer,
                 json_encode($customDeds), json_encode($customAdds),
-                $totalDeductions, $totalEmployerCost, $netPayable, $workDays,
+                $totalDeductions, $totalEmployerCost, $netPayable, $daysInMonth,
                 $_SESSION['user_id']
             ]);
             $count++;
