@@ -106,11 +106,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $sets   = [];
         $params = [];
+        // Fields that should NOT be blanked out if left empty in the form
+        $keepIfEmpty = ['personal_email', 'phone', 'emergency_contact_no', 'blood_group',
+                        'nationality', 'place_of_birth', 'passport_no', 'place_of_issue',
+                        'uan_number', 'pf_account_number', 'esi_number', 'pan', 'aadhar_no'];
         foreach ($allCols as $col) {
             if (in_array($col, $skip)) continue;
             if (!array_key_exists($col, $_POST)) continue;
+            $val = trim($_POST[$col]);
+            // If field is empty and it's a "keep if empty" field, skip — don't overwrite existing value
+            if ($val === '' && in_array($col, $keepIfEmpty)) continue;
             $sets[]   = "`$col` = ?";
-            $val      = trim($_POST[$col]);
             $params[] = ($val === '') ? null : $val;
         }
         // exempt_from_tax is a checkbox — not in $_POST when unchecked
@@ -153,6 +159,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($personalEmail === $newEmail) {
                 $_SESSION['flash_error'] = "Personal email must be different from the work email.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+        }
+
+        // ── Phone uniqueness check (exclude current employee) ──
+        $newPhone = trim($_POST['phone'] ?? '');
+        if ($newPhone) {
+            // Normalise: strip spaces, dashes, brackets for comparison
+            $normPhone = preg_replace('/[\s\-\(\)\+]/', '', $newPhone);
+            $dupPhone  = $db->prepare("SELECT id FROM employees WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')',''),'+','')=? AND id!=?");
+            $dupPhone->execute([$normPhone, $id]);
+            if ($dupPhone->fetch()) {
+                $_SESSION['flash_error'] = "Phone number '$newPhone' is already registered to another employee.";
                 header("Location: edit_employee.php?id=$id"); exit;
             }
         }

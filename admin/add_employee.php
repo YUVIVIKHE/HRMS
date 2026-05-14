@@ -69,16 +69,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ── Personal email uniqueness check ─────────────
             $personalEmail = strtolower(trim($_POST['personal_email'] ?? ''));
             if ($personalEmail) {
-                // Must not match another employee's personal_email
                 $dupPE = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=?");
                 $dupPE->execute([$personalEmail]);
                 if ($dupPE->fetch()) {
                     $_SESSION['flash_error'] = "Personal email '$personalEmail' is already registered to another employee.";
                     header("Location: add_employee.php"); exit;
                 }
-                // Must not be the same as the work email being added
                 if ($personalEmail === $newEmail) {
                     $_SESSION['flash_error'] = "Personal email must be different from the work email.";
+                    header("Location: add_employee.php"); exit;
+                }
+            }
+
+            // ── Phone uniqueness check ───────────────────────
+            $newPhone = trim($_POST['phone'] ?? '');
+            if ($newPhone) {
+                $normPhone = preg_replace('/[\s\-\(\)\+]/', '', $newPhone);
+                $dupPhone  = $db->prepare("SELECT id FROM employees WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')',''),'+','')=?");
+                $dupPhone->execute([$normPhone]);
+                if ($dupPhone->fetch()) {
+                    $_SESSION['flash_error'] = "Phone number '$newPhone' is already registered to another employee.";
                     header("Location: add_employee.php"); exit;
                 }
             }
