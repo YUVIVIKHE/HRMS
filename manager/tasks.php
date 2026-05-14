@@ -133,42 +133,7 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
       <div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div>
     <?php endif; ?>
 
-    <!-- Filter + Assign Task row -->
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
-      <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex:1;">
-        <select name="project_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:180px;max-width:250px;">
-          <option value="">All Projects</option>
-          <?php foreach($myProjects as $proj): ?>
-          <option value="<?= $proj['id'] ?>" <?= $filterProject==$proj['id']?'selected':'' ?>>
-            <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
-          </option>
-          <?php endforeach; ?>
-        </select>
-        <select name="member_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:150px;max-width:200px;">
-          <option value="">All Members</option>
-          <?php foreach($teamMembers as $m): ?>
-            <option value="<?= $m['id'] ?>" <?= $filterMember==$m['id']?'selected':'' ?>><?= htmlspecialchars($m['name']) ?></option>
-          <?php endforeach; ?>
-        </select>
-        <div class="search-box" style="min-width:140px;flex:0 1 180px;">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search…">
-        </div>
-        <input type="hidden" name="period" id="periodInput" value="<?= htmlspecialchars($filterPeriod) ?>">
-        <input type="hidden" name="date_from" id="dateFromInput" value="<?= htmlspecialchars($filterDateFrom) ?>">
-        <input type="hidden" name="date_to" id="dateToInput" value="<?= htmlspecialchars($filterDateTo) ?>">
-        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-        <a href="tasks.php" class="btn btn-ghost btn-sm">Reset</a>
-      </form>
-      <?php if(!empty($myProjects)): ?>
-      <a href="assign_task.php?project_id=<?= $filterProject ?: $myProjects[0]['id'] ?>" class="btn btn-primary" style="flex-shrink:0;">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Assign Task
-      </a>
-      <?php endif; ?>
-    </div>
-
-    <!-- Stats -->
+    <!-- Stats (top) -->
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
@@ -198,6 +163,37 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
         </div>
       </div>
     </div>
+
+    <!-- Filters (auto-submit on change) -->
+    <form method="GET" id="filterForm" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+      <select name="project_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:180px;max-width:250px;" onchange="this.form.submit()">
+        <option value="">All Projects</option>
+        <?php foreach($myProjects as $proj): ?>
+        <option value="<?= $proj['id'] ?>" <?= $filterProject==$proj['id']?'selected':'' ?>>
+          <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
+        </option>
+        <?php endforeach; ?>
+      </select>
+      <select name="member_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:150px;max-width:200px;" onchange="this.form.submit()">
+        <option value="">All Members</option>
+        <?php foreach($teamMembers as $m): ?>
+          <option value="<?= $m['id'] ?>" <?= $filterMember==$m['id']?'selected':'' ?>><?= htmlspecialchars($m['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <div class="search-box" style="min-width:140px;flex:0 1 180px;">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search…" onchange="this.form.submit()">
+      </div>
+      <input type="hidden" name="period" id="periodInput" value="<?= htmlspecialchars($filterPeriod) ?>">
+      <input type="hidden" name="date_from" id="dateFromInput" value="<?= htmlspecialchars($filterDateFrom) ?>">
+      <input type="hidden" name="date_to" id="dateToInput" value="<?= htmlspecialchars($filterDateTo) ?>">
+      <?php if(!empty($myProjects)): ?>
+      <a href="assign_task.php?project_id=<?= $filterProject ?: $myProjects[0]['id'] ?>" class="btn btn-primary" style="margin-left:auto;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Assign Task
+      </a>
+      <?php endif; ?>
+    </form>
 
     <!-- Date/Period Filter -->
     <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
