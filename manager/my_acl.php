@@ -75,6 +75,7 @@ $aclDays = round($totalOTHrs / 9, 2);
           <option value="<?= $y ?>" <?= $y==$filterYear?'selected':'' ?>><?= $y ?></option>
         <?php endfor; ?>
       </select>
+      <a href="acl_request.php" class="btn btn-primary btn-sm" style="margin-left:auto;">+ Request ACL</a>
     </form>
 
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">

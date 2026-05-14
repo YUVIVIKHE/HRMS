@@ -23,7 +23,7 @@ $logs = $db->prepare("
 $logs->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth), $MIN_OT_SEC]);
 $logs = $logs->fetchAll();
 
-// Calculate ACL
+// Calculate ACL from overtime
 $totalOTSeconds = 0;
 $aclEntries = [];
 foreach ($logs as $l) {
@@ -38,7 +38,18 @@ foreach ($logs as $l) {
     ];
 }
 $totalOTHrs = round($totalOTSeconds / 3600, 2);
-$aclDays = round($totalOTHrs / 9, 2); // Convert OT hours to equivalent leave days (9 hrs = 1 day)
+
+// Get approved ACL requests for this month
+$approvedACL = $db->prepare("
+    SELECT work_date, hours FROM acl_requests
+    WHERE user_id = ? AND status = 'approved' AND DATE_FORMAT(work_date,'%Y-%m') = ?
+");
+$approvedACL->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth)]);
+$approvedACL = $approvedACL->fetchAll();
+$aclFromRequests = array_sum(array_column($approvedACL, 'hours'));
+
+$totalACLHrs = $totalOTHrs + $aclFromRequests;
+$aclDays = round($totalACLHrs / 9, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -80,6 +91,7 @@ $aclDays = round($totalOTHrs / 9, 2); // Convert OT hours to equivalent leave da
           <option value="<?= $y ?>" <?= $y==$filterYear?'selected':'' ?>><?= $y ?></option>
         <?php endfor; ?>
       </select>
+      <a href="acl_request.php" class="btn btn-primary btn-sm" style="margin-left:auto;">+ Request ACL</a>
     </form>
 
     <!-- Stats -->
@@ -100,8 +112,8 @@ $aclDays = round($totalOTHrs / 9, 2); // Convert OT hours to equivalent leave da
         </div>
         <div class="stat-body">
           <div class="stat-value"><?= $totalOTHrs ?></div>
-          <div class="stat-label">Total OT Hours</div>
-          <div class="stat-sub">This month</div>
+          <div class="stat-label">OT Hours</div>
+          <div class="stat-sub"><?php if($aclFromRequests > 0): ?>+ <?= $aclFromRequests ?> hrs (approved requests)<?php else: ?>This month<?php endif; ?></div>
         </div>
       </div>
       <div class="stat-card" style="border-color:var(--brand);background:var(--brand-light);">
@@ -111,7 +123,7 @@ $aclDays = round($totalOTHrs / 9, 2); // Convert OT hours to equivalent leave da
         <div class="stat-body">
           <div class="stat-value" style="color:var(--brand);"><?= $aclDays ?></div>
           <div class="stat-label">ACL Earned</div>
-          <div class="stat-sub">Compensatory leave days</div>
+          <div class="stat-sub"><?= $totalACLHrs ?> hrs total ÷ 9</div>
         </div>
       </div>
     </div>
