@@ -64,11 +64,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
         'pf_rate' => (float)($_POST['pf_rate'] ?? 12),
     ];
 
-    // Professional tax calculation
-    if ($gross <= 250000) $data['professional_tax'] = 0;
-    elseif ($gross <= 500000) $data['professional_tax'] = round($gross * 0.05, 2);
-    elseif ($gross <= 1000000) $data['professional_tax'] = round($gross * 0.20, 2);
-    else $data['professional_tax'] = round($gross * 0.30, 2);
+    // Income Tax calculation (New Regime FY 2025-26 slabs on gross annual)
+    $annualTax = 0;
+    $taxableIncome = $gross;
+    if ($taxableIncome > 2400000) { $annualTax += ($taxableIncome - 2400000) * 0.30; $taxableIncome = 2400000; }
+    if ($taxableIncome > 2000000) { $annualTax += ($taxableIncome - 2000000) * 0.25; $taxableIncome = 2000000; }
+    if ($taxableIncome > 1600000) { $annualTax += ($taxableIncome - 1600000) * 0.20; $taxableIncome = 1600000; }
+    if ($taxableIncome > 1200000) { $annualTax += ($taxableIncome - 1200000) * 0.15; $taxableIncome = 1200000; }
+    if ($taxableIncome > 800000) { $annualTax += ($taxableIncome - 800000) * 0.10; $taxableIncome = 800000; }
+    if ($taxableIncome > 400000) { $annualTax += ($taxableIncome - 400000) * 0.05; }
+    $data['professional_tax'] = round($annualTax, 2);
 
     // Custom deductions
     $customDed = [];
@@ -104,11 +109,16 @@ $basic = round($monthly / 2, 2);
 $hra = round($basic / 2, 2);
 $customDed = json_decode($s['custom_deductions'] ?? '[]', true) ?: [];
 
-// Professional tax
-if ($gross <= 250000) $profTax = 0;
-elseif ($gross <= 500000) $profTax = round($gross * 0.05, 2);
-elseif ($gross <= 1000000) $profTax = round($gross * 0.20, 2);
-else $profTax = round($gross * 0.30, 2);
+// Income Tax (annual) calculation
+$annualTax = 0;
+$taxable = $gross;
+if ($taxable > 2400000) { $annualTax += ($taxable - 2400000) * 0.30; $taxable = 2400000; }
+if ($taxable > 2000000) { $annualTax += ($taxable - 2000000) * 0.25; $taxable = 2000000; }
+if ($taxable > 1600000) { $annualTax += ($taxable - 1600000) * 0.20; $taxable = 1600000; }
+if ($taxable > 1200000) { $annualTax += ($taxable - 1200000) * 0.15; $taxable = 1200000; }
+if ($taxable > 800000) { $annualTax += ($taxable - 800000) * 0.10; $taxable = 800000; }
+if ($taxable > 400000) { $annualTax += ($taxable - 400000) * 0.05; }
+$profTax = round($annualTax, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -211,7 +221,7 @@ else $profTax = round($gross * 0.30, 2);
         <div class="card-header"><h2>Deductions (Monthly)</h2></div>
         <div class="card-body">
           <table style="width:100%;font-size:13px;">
-            <tr><td style="padding:8px 0;color:var(--muted);">Professional Tax</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyProfTax,0) ?></td></tr>
+            <tr><td style="padding:8px 0;color:var(--muted);">Income Tax (Monthly)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyProfTax,0) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Tax Regime</td><td style="text-align:right;font-weight:700;"><?= ucfirst($s['tax_regime']) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Employee ESI (<?= $s['esi_rate'] ?>%)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyESI,0) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Employee PF (<?= $s['pf_rate'] ?>%)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyPF,0) ?></td></tr>
@@ -288,9 +298,9 @@ else $profTax = round($gross * 0.30, 2);
           <div class="card-header"><h2>Deductions</h2></div>
           <div class="card-body">
             <div style="background:var(--surface-2);border-radius:8px;padding:12px;margin-bottom:14px;">
-              <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Professional Tax (auto-calculated):</div>
-              <div style="font-size:14px;font-weight:700;color:var(--red);">₹<span id="dispProfTax"><?= number_format($profTax,0) ?></span></div>
-              <div style="font-size:11px;color:var(--muted);margin-top:4px;">≤2.5L: Nil | 2.5-5L: 5% | 5-10L: 20% | >10L: 30%</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Income Tax - Annual (auto-calculated, deducted monthly):</div>
+              <div style="font-size:14px;font-weight:700;color:var(--red);">₹<span id="dispProfTax"><?= number_format($profTax,0) ?></span> /year → ₹<span id="dispMonthlyTax"><?= number_format(round($profTax/12),0) ?></span> /month</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px;">≤4L: Nil | 4-8L: 5% | 8-12L: 10% | 12-16L: 15% | 16-20L: 20% | 20-24L: 25% | >24L: 30%</div>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
               <label>Tax Regime</label>
@@ -352,11 +362,15 @@ function calcAuto() {
   document.getElementById('dispHRA').textContent = Math.round(hra).toLocaleString('en-IN');
 
   let pt = 0;
-  if (gross <= 250000) pt = 0;
-  else if (gross <= 500000) pt = gross * 0.05;
-  else if (gross <= 1000000) pt = gross * 0.20;
-  else pt = gross * 0.30;
+  let taxable = gross;
+  if (taxable > 2400000) { pt += (taxable - 2400000) * 0.30; taxable = 2400000; }
+  if (taxable > 2000000) { pt += (taxable - 2000000) * 0.25; taxable = 2000000; }
+  if (taxable > 1600000) { pt += (taxable - 1600000) * 0.20; taxable = 1600000; }
+  if (taxable > 1200000) { pt += (taxable - 1200000) * 0.15; taxable = 1200000; }
+  if (taxable > 800000) { pt += (taxable - 800000) * 0.10; taxable = 800000; }
+  if (taxable > 400000) { pt += (taxable - 400000) * 0.05; }
   document.getElementById('dispProfTax').textContent = Math.round(pt).toLocaleString('en-IN');
+  document.getElementById('dispMonthlyTax').textContent = Math.round(pt/12).toLocaleString('en-IN');
 }
 
 let cedIdx = <?= count($customDed) ?>;

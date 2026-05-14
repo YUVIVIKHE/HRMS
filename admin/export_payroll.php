@@ -93,7 +93,7 @@ foreach ($infoH as $h) echo '<Cell ss:StyleID="hInfo"><Data ss:Type="String">' .
 $earnH = ['Gross (Annual)','Monthly CTC','Basic Salary','HRA','Special Allow.','Conveyance','Education Allow.','LTA','Mediclaim','Medical Reimb.','Mobile & Internet','Personal Allow.','Bonus (Yearly)','Total Earnings'];
 foreach ($earnH as $h) echo '<Cell ss:StyleID="hEarn"><Data ss:Type="String">' . e($h) . '</Data></Cell>';
 
-$dedH = ['Prof. Tax','Tax Regime','ESI (%)','PF (%)','ESI Amount','PF Amount'];
+$dedH = ['Income Tax (Monthly)','Tax Regime','ESI (%)','PF (%)','ESI Amount','PF Amount'];
 foreach ($dedH as $h) echo '<Cell ss:StyleID="hDed"><Data ss:Type="String">' . e($h) . '</Data></Cell>';
 foreach ($allCustomDedNames as $cdName) echo '<Cell ss:StyleID="hDed"><Data ss:Type="String">' . e($cdName) . '</Data></Cell>';
 echo '<Cell ss:StyleID="hDed"><Data ss:Type="String">Total Deductions</Data></Cell>';
