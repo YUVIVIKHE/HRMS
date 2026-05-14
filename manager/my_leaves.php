@@ -68,10 +68,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action']??'', ['ap
     $note   = trim($_POST['review_note'] ?? '');
     $status = $_POST['action'] === 'approve_leave' ? 'approved' : 'rejected';
 
-    $app = $db->prepare("SELECT la.*, u.manager_id FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE la.id=?");
-    $app->execute([$appId]); $app = $app->fetch();
+    // Verify the applicant is in this manager's department
+    $app = $db->prepare("
+        SELECT la.* FROM leave_applications la
+        JOIN users u ON la.user_id = u.id
+        JOIN employees emp ON emp.email = u.email
+        JOIN employees mgr_emp ON mgr_emp.department_id = emp.department_id
+        JOIN users mgr_u ON mgr_u.email = mgr_emp.email
+        WHERE la.id = ? AND mgr_u.id = ? AND la.status = 'pending'
+    ");
+    $app->execute([$appId, $uid]); $app = $app->fetch();
 
-    if ($app && $app['manager_id'] == $uid) {
+    if ($app) {
         $db->prepare("UPDATE leave_applications SET status=?,reviewed_by=?,reviewed_at=NOW(),review_note=? WHERE id=?")
            ->execute([$status,$uid,$note,$appId]);
 
@@ -104,7 +112,10 @@ $teamLeaves = $db->prepare("
     FROM leave_applications la
     JOIN leave_types lt ON la.leave_type_id=lt.id
     JOIN users u ON la.user_id=u.id
-    WHERE u.manager_id=? AND la.status='pending'
+    JOIN employees emp ON emp.email = u.email
+    JOIN employees mgr_emp ON mgr_emp.department_id = emp.department_id
+    JOIN users mgr_u ON mgr_u.email = mgr_emp.email
+    WHERE mgr_u.id=? AND la.status='pending'
     ORDER BY la.from_date ASC
 ");
 $teamLeaves->execute([$uid]); $teamLeaves = $teamLeaves->fetchAll();

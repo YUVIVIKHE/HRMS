@@ -21,8 +21,12 @@ if ($user) {
     $emp = $stmt->fetch();
 }
 
-// Team size
-$teamSize = (int)$db->query("SELECT COUNT(*) FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee'")->fetchColumn();
+// Team size — dept-based
+$mgrDeptStmt = $db->prepare("SELECT e.department_id FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
+$mgrDeptStmt->execute([$uid]); $mgrDeptId2 = $mgrDeptStmt->fetchColumn();
+$teamSizeStmt = $db->prepare("SELECT COUNT(*) FROM users u JOIN employees e ON e.email=u.email WHERE e.department_id=? AND u.role='employee' AND u.id!=? AND u.status='active'");
+$teamSizeStmt->execute([$mgrDeptId2 ?: 0, $uid]);
+$teamSize = (int)$teamSizeStmt->fetchColumn();
 
 $firstName = explode(' ', $_SESSION['user_name'])[0];
 

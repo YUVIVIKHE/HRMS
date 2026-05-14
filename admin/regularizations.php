@@ -67,7 +67,7 @@ $regs = $db->prepare("
     FROM attendance_regularizations ar
     JOIN users u ON ar.user_id = u.id
     INNER JOIN employees e ON e.email = u.email
-    LEFT JOIN users mgr ON u.manager_id = mgr.id
+    LEFT JOIN departments d ON d.id = e.department_id
     WHERE " . implode(' AND ', $where) . "
     ORDER BY ar.escalated DESC, ar.created_at ASC
 ");

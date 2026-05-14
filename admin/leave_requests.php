@@ -63,13 +63,13 @@ if ($filterEsc)   { $where[] = "la.escalated=1"; }
 $requests = $db->prepare("
     SELECT la.*, lt.name AS type_name, lt.color,
            u.name AS emp_name, u.email AS emp_email, u.role AS emp_role,
-           mgr.name AS manager_name,
+           d.name AS department_name,
            lb.balance AS remaining_balance
     FROM leave_applications la
     JOIN users u ON la.user_id = u.id
     INNER JOIN employees e ON e.email = u.email
     JOIN leave_types lt ON la.leave_type_id = lt.id
-    LEFT JOIN users mgr ON u.manager_id = mgr.id
+    LEFT JOIN departments d ON d.id = e.department_id
     LEFT JOIN leave_balances lb ON lb.user_id=la.user_id AND lb.leave_type_id=la.leave_type_id
     WHERE " . implode(' AND ', $where) . "
     ORDER BY la.escalated DESC, la.created_at ASC

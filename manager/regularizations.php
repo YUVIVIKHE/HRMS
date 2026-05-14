@@ -70,9 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             JOIN users u ON ar.user_id = u.id
             JOIN employees e ON e.email = u.email
             WHERE ar.id = ? AND ar.status = 'pending'
-              AND (u.manager_id = ? OR e.department_id = ?)
+              AND EXISTS (
+                SELECT 1 FROM employees e WHERE e.email = u.email AND e.department_id = ?
+              )
+              AND u.id != ?
         ");
-        $reg->execute([$regId, $uid, $managerDeptId]);
+        $reg->execute([$regId, $managerDeptId ?: 0, $uid]);
         $reg = $reg->fetch();
 
         if ($reg) {
@@ -106,8 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Data ─────────────────────────────────────────────────────
 $filterStatus = $_GET['status'] ?? 'pending';
-$where  = ["ar.status != 'cancelled'", "(u.manager_id=? OR e.department_id=?)", "u.id != ?"];
-$params = [$uid, $managerDeptId ?: 0, $uid];
+$where  = ["ar.status != 'cancelled'", "EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=?)", "u.id != ?"];
+$params = [$managerDeptId ?: 0, $uid];
 if ($filterStatus !== 'all') { $where[] = "ar.status=?"; $params[] = $filterStatus; }
 
 $regs = $db->prepare("
@@ -123,8 +126,8 @@ $regs = $regs->fetchAll();
 
 $counts = [];
 foreach (['pending','approved','rejected'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM attendance_regularizations ar JOIN users u ON ar.user_id=u.id JOIN employees e ON e.email=u.email WHERE (u.manager_id=? OR e.department_id=?) AND u.id!=? AND ar.status=?");
-    $c->execute([$uid, $managerDeptId ?: 0, $uid, $s]); $counts[$s] = (int)$c->fetchColumn();
+    $c = $db->prepare("SELECT COUNT(*) FROM attendance_regularizations ar JOIN users u ON ar.user_id=u.id JOIN employees e ON e.email=u.email WHERE EXISTS(SELECT 1 FROM employees e2 WHERE e2.email=u.email AND e2.department_id=?) AND u.id!=? AND ar.status=?");
+    $c->execute([$managerDeptId ?: 0, $uid, $s]); $counts[$s] = (int)$c->fetchColumn();
 }
 $statusMap = ['pending'=>'badge-yellow','approved'=>'badge-green','rejected'=>'badge-red'];?>
 <!DOCTYPE html>

@@ -42,17 +42,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             SELECT la.* FROM leave_applications la
             JOIN users u ON la.user_id = u.id
             WHERE la.id = ? AND la.status = 'pending'
-              AND (
-                u.manager_id = ?
-                OR EXISTS (
-                    SELECT 1 FROM employees e
-                    JOIN employees me ON me.department_id = e.department_id
-                    JOIN users mu ON mu.email = me.email
-                    WHERE e.email = u.email AND mu.id = ?
-                )
+              AND EXISTS (
+                SELECT 1 FROM employees e
+                WHERE e.email = u.email AND e.department_id = ?
               )
+              AND u.id != ?
         ");
-        $app->execute([$appId, $uid, $uid]);
+        $app->execute([$appId, $managerDeptId ?: 0, $uid]);
         $app = $app->fetch();
 
         if ($app) {
@@ -76,11 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Data ─────────────────────────────────────────────────────
 $filterStatus = $_GET['status'] ?? 'pending';
 
-// Manager sees employees who either:
-// 1. Have users.manager_id pointing to this manager, OR
-// 2. Are in the same department as this manager (via employees table)
-$where  = ["(u.manager_id = ? OR EXISTS (SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))"];
-$params = [$uid, $managerDeptId ?: 0, $uid];
+// Manager sees employees in their department (dept-based, no manager_id column)
+$where  = ["(EXISTS (SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=?) AND u.id!=?)"];
+$params = [$managerDeptId ?: 0, $uid];
 if ($filterStatus && $filterStatus !== 'all') {
     $where[] = "la.status = ?";
     $params[] = $filterStatus;
@@ -104,16 +98,16 @@ $requests = $requests->fetchAll();
 $counts = [];
 foreach (['pending','approved','rejected','cancelled'] as $s) {
     $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id
-        WHERE (u.manager_id=? OR EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))
+        WHERE EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?)
         AND la.status=?");
-    $c->execute([$uid, $managerDeptId ?: 0, $uid, $s]);
+    $c->execute([$managerDeptId ?: 0, $uid, $s]);
     $counts[$s] = (int)$c->fetchColumn();
 }
 
 $escalatedStmt = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id
-    WHERE (u.manager_id=? OR EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?))
+    WHERE EXISTS(SELECT 1 FROM employees e WHERE e.email=u.email AND e.department_id=? AND u.id!=?)
     AND la.escalated=1 AND la.status='pending'");
-$escalatedStmt->execute([$uid, $managerDeptId ?: 0, $uid]);
+$escalatedStmt->execute([$managerDeptId ?: 0, $uid]);
 $escalatedCount = (int)$escalatedStmt->fetchColumn();
 ?>
 <!DOCTYPE html>

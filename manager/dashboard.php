@@ -12,8 +12,17 @@ $openTasks    = 8;
 $teamLeaves   = [];
 $teamMembers  = [];
 try {
-    $myTeam      = (int)$db->query("SELECT COUNT(*) FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee'")->fetchColumn();
-    $teamMembers = $db->query("SELECT u.id, u.name, u.email, u.status FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee' LIMIT 8")->fetchAll();
+    // Get manager's department
+    $mgrDept = $db->prepare("SELECT e.department_id FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
+    $mgrDept->execute([$uid]); $mgrDeptId = $mgrDept->fetchColumn();
+
+    if ($mgrDeptId) {
+        $myTeam      = (int)$db->prepare("SELECT COUNT(*) FROM users u JOIN employees e ON e.email=u.email WHERE e.department_id=? AND u.role='employee' AND u.id!=? AND u.status='active'")->execute([$mgrDeptId,$uid]) ? $db->prepare("SELECT COUNT(*) FROM users u JOIN employees e ON e.email=u.email WHERE e.department_id=? AND u.role='employee' AND u.id!=? AND u.status='active'")->execute([$mgrDeptId,$uid]) : 0;
+        $cntStmt = $db->prepare("SELECT COUNT(*) FROM users u JOIN employees e ON e.email=u.email WHERE e.department_id=? AND u.role='employee' AND u.id!=? AND u.status='active'");
+        $cntStmt->execute([$mgrDeptId,$uid]); $myTeam = (int)$cntStmt->fetchColumn();
+        $tmStmt = $db->prepare("SELECT u.id, u.name, u.email, u.status FROM users u JOIN employees e ON e.email=u.email WHERE e.department_id=? AND u.role='employee' AND u.id!=? AND u.status='active' LIMIT 8");
+        $tmStmt->execute([$mgrDeptId,$uid]); $teamMembers = $tmStmt->fetchAll();
+    }
 } catch(Exception $e) {}
 $firstName = explode(' ', $_SESSION['user_name'])[0];
 

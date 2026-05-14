@@ -38,11 +38,17 @@ function getDB(): PDO {
                 WHERE u1.role = 'employee' AND u2.role = 'manager'
             ");
             // Ensure UNIQUE on email
-            try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}            // Ensure UNIQUE on employees.email too
+            try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}
+            // Ensure UNIQUE on employees.email too
             try { $pdo->exec("ALTER TABLE `employees` ADD UNIQUE KEY `uq_emp_email` (`email`)"); } catch(Exception $e) {}
             // Ensure UNIQUE on employees.personal_email (nullable, so allow multiple NULLs)
             try { $pdo->exec("ALTER TABLE `employees` ADD UNIQUE KEY `uq_emp_personal_email` (`personal_email`)"); } catch(Exception $e) {}
-            $pdo->exec("
+            // Drop legacy columns from users table if they exist (clean schema)
+            foreach (['manager_id','phone','department','designation','joined_at'] as $col) {
+                try { $pdo->exec("ALTER TABLE `users` DROP COLUMN `$col`"); } catch(Exception $e) {}
+            }
+            // Drop legacy index if exists
+            try { $pdo->exec("ALTER TABLE `users` DROP INDEX `idx_manager_id`"); } catch(Exception $e) {}            $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_locations` (
                   `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,
                   `name`       VARCHAR(120)  NOT NULL,

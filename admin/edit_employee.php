@@ -38,29 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ")->execute([$fullName, $empData['email'], $hashed]);
             // Note: password is only set on INSERT (new account). Existing users keep their password.
 
-            // 2. Get the new manager's user id
+            // 2. Get the new manager's user id (for reference only)
             $managerUser = $db->prepare("SELECT id FROM users WHERE email = ?");
             $managerUser->execute([$empData['email']]);
             $managerUserId = $managerUser->fetchColumn();
 
-            // 3. Assign all employees in the same department to this manager
-            //    (only those whose manager_id is NULL or not yet set)
-            if ($empData['department_id'] && $managerUserId) {
-                // Find user accounts for employees in same dept (excluding the manager themselves)
-                $deptEmps = $db->prepare("
-                    SELECT u.id FROM users u
-                    INNER JOIN employees e ON u.email = e.email
-                    WHERE e.department_id = ? AND u.role = 'employee' AND u.email != ?
-                ");
-                $deptEmps->execute([$empData['department_id'], $empData['email']]);
-                $deptEmpIds = $deptEmps->fetchAll(PDO::FETCH_COLUMN);
-
-                if (!empty($deptEmpIds)) {
-                    $placeholders = implode(',', array_fill(0, count($deptEmpIds), '?'));
-                    $params = array_merge([$managerUserId], $deptEmpIds);
-                    $db->prepare("UPDATE users SET manager_id = ? WHERE id IN ($placeholders)")->execute($params);
-                }
-            }
+            // Note: team membership is now determined by department (employees table)
+            // No manager_id column in users table — relationship is dept-based
 
             // 4. Send congratulation email
             require_once __DIR__ . '/../auth/mailer.php';
@@ -202,30 +186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                ->execute([$updatedEmail, strtolower($currentEmpEmail)]);
         }
 
-        // ── Sync users.manager_id when department changes ──────
-        // Find the new department_id from POST
-        $newDeptId = isset($_POST['department_id']) && $_POST['department_id'] !== '' ? (int)$_POST['department_id'] : null;
-        if ($newDeptId) {
-            // Get this employee's user account email
-            $empEmail = $db->prepare("SELECT email FROM employees WHERE id=?");
-            $empEmail->execute([$id]); $empEmail = $empEmail->fetchColumn();
-
-            if ($empEmail) {
-                // Find the manager of the new department (user with role=manager in that dept)
-                $deptManager = $db->prepare("
-                    SELECT u.id FROM users u
-                    JOIN employees e ON e.email = u.email
-                    WHERE e.department_id = ? AND u.role = 'manager'
-                    LIMIT 1
-                ");
-                $deptManager->execute([$newDeptId]);
-                $newManagerId = $deptManager->fetchColumn();
-
-                // Update users.manager_id for this employee
-                $db->prepare("UPDATE users SET manager_id = ? WHERE email = ? AND role = 'employee'")
-                   ->execute([$newManagerId ?: null, $empEmail]);
-            }
-        }
+        // ── Department change: no users.manager_id to sync (dept-based relationship) ──
+        // The employee's department is already updated in the employees table above.
 
         $_SESSION['flash_success'] = "Employee updated successfully.";
         header("Location: edit_employee.php?id=$id"); exit;
