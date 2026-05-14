@@ -6,32 +6,22 @@ $db  = getDB();
 $uid = $_SESSION['user_id'];
 
 // Fetch projects assigned to this manager
-$filterStatus = $_GET['status'] ?? '';
-$where  = ["p.manager_id = ?"];
-$params = [$uid];
-if ($filterStatus) { $where[] = "p.status = ?"; $params[] = $filterStatus; }
-
 $projects = $db->prepare("
-    SELECT p.*
+    SELECT p.*,
+           COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl
+                     JOIN task_assignments ta ON tpl.task_id = ta.id
+                     WHERE ta.project_id = p.id), 0) AS worked_hours
     FROM projects p
-    WHERE " . implode(' AND ', $where) . "
-    ORDER BY
-        FIELD(p.status,'Active','Planning','On Hold','Completed','Cancelled'),
-        p.deadline_date ASC
+    WHERE p.manager_id = ?
+    ORDER BY p.deadline_date ASC
 ");
-$projects->execute($params);
+$projects->execute([$uid]);
 $projects = $projects->fetchAll();
 
-// Counts for this manager
-$counts = [];
-foreach (['Planning','Active','On Hold','Completed','Cancelled'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM projects WHERE manager_id=? AND status=?");
-    $c->execute([$uid, $s]); $counts[$s] = (int)$c->fetchColumn();
-}
-$total = array_sum($counts);
-
-$priorityBadge = ['Low'=>'badge-gray','Medium'=>'badge-blue','High'=>'badge-yellow','Critical'=>'badge-red'];
-$statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'badge-yellow','Completed'=>'badge-blue','Cancelled'=>'badge-red'];
+$total = count($projects);
+$totalHrs = array_sum(array_column($projects, 'total_hours'));
+$totalWorked = array_sum(array_column($projects, 'worked_hours'));
+$deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= date('Y-m-d') && $p['deadline_date'] <= date('Y-m-d', strtotime('+7 days'))));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -61,136 +51,122 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
 
   <div class="page-body">
 
-    <div class="page-header">
-      <div class="page-header-text">
-        <h1>My Projects</h1>
-        <p>Projects assigned to you by admin. <?= $total ?> total project<?= $total!==1?'s':'' ?>.</p>
-      </div>
-    </div>
-
     <!-- Stats -->
-    <?php if($total > 0): ?>
-    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
-      <?php foreach(['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'badge-yellow','Completed'=>'badge-blue','Cancelled'=>'badge-red'] as $s=>$b): ?>
-      <a href="projects.php?status=<?= urlencode($s) ?>" style="text-decoration:none;">
-        <div class="stat-card" style="<?= $filterStatus===$s?'border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-light);':'' ?>">
-          <div class="stat-body"><div class="stat-value"><?= $counts[$s] ?></div><div class="stat-label"><?= $s ?></div></div>
-          <span class="badge <?= $b ?>" style="align-self:flex-start;"><?= $s ?></span>
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
+          <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
         </div>
-      </a>
-      <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
-
-    <!-- Filter tabs -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-      <a href="projects.php" class="btn btn-sm <?= !$filterStatus?'btn-primary':'btn-ghost' ?>">All (<?= $total ?>)</a>
-      <?php foreach(array_keys($counts) as $s): if(!$counts[$s]) continue; ?>
-        <a href="projects.php?status=<?= urlencode($s) ?>" class="btn btn-sm <?= $filterStatus===$s?'btn-primary':'btn-ghost' ?>"><?= $s ?> (<?= $counts[$s] ?>)</a>
-      <?php endforeach; ?>
-      <div style="margin-left:auto;">
-        <div class="search-box">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="pSearch" placeholder="Search projects…" oninput="filterP(this.value)">
+        <div class="stat-body">
+          <div class="stat-value"><?= $total ?></div>
+          <div class="stat-label">Total Projects</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value"><?= $deadlineNear ?></div>
+          <div class="stat-label">Deadline Near</div>
+          <div class="stat-sub">Within 7 days</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--blue-bg);color:var(--blue);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value"><?= number_format($totalHrs,1) ?></div>
+          <div class="stat-label">Total Hrs</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--green-bg);color:var(--green);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value"><?= number_format($totalWorked,1) ?></div>
+          <div class="stat-label">Hrs Worked</div>
         </div>
       </div>
     </div>
 
+    <!-- Search -->
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <div class="search-box" style="min-width:200px;flex:0 1 280px;">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="pSearch" placeholder="Search projects…" oninput="filterP(this.value)">
+      </div>
+    </div>
+
+    <!-- Projects Table -->
     <?php if(empty($projects)): ?>
-      <div class="card">
-        <div class="card-body" style="text-align:center;padding:60px 20px;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="display:block;margin:0 auto 16px;"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
-          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No projects assigned</div>
-          <div style="font-size:13.5px;color:var(--muted);">Projects assigned to you by admin will appear here.</div>
-        </div>
-      </div>
+      <div class="card"><div class="card-body" style="text-align:center;padding:60px 20px;">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No projects assigned</div>
+        <div style="font-size:13.5px;color:var(--muted);">Projects assigned to you by admin will appear here.</div>
+      </div></div>
     <?php else: ?>
-
-    <!-- Project cards -->
-    <div id="pGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
-      <?php foreach($projects as $p):
-        $overdue    = $p['status']==='Active' && $p['deadline_date'] < date('Y-m-d');
-        $daysLeft   = (int)ceil((strtotime($p['deadline_date']) - time()) / 86400);
-        $estCost    = $p['total_hours'] * $p['hr_rate'];
-        $progress   = 0;
-        if ($p['status']==='Completed') $progress = 100;
-        elseif ($p['status']==='Active') {
-            $total_d = max(1, (strtotime($p['deadline_date']) - strtotime($p['start_date'])) / 86400);
-            $elapsed = max(0, (time() - strtotime($p['start_date'])) / 86400);
-            $progress = min(95, round(($elapsed / $total_d) * 100));
-        }
-      ?>
-      <div class="card p-card" data-name="<?= htmlspecialchars(strtolower($p['project_name'].' '.$p['project_code'].' '.($p['client_name']??''))) ?>"
-           style="<?= $overdue?'border-color:#fca5a5;':'' ?>">
-        <div style="padding:18px 20px;">
-
-          <!-- Header -->
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <code style="font-size:11px;background:var(--surface-2);padding:2px 7px;border-radius:5px;color:var(--muted);flex-shrink:0;"><?= htmlspecialchars($p['project_code']) ?></code>
-                <span class="badge <?= $priorityBadge[$p['priority']]??'badge-gray' ?>" style="font-size:10.5px;"><?= $p['priority'] ?></span>
-              </div>
-              <div style="font-size:15px;font-weight:800;color:var(--text);line-height:1.3;"><?= htmlspecialchars($p['project_name']) ?></div>
-              <?php if($p['client_name']): ?>
-                <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">Client: <?= htmlspecialchars($p['client_name']) ?></div>
-              <?php endif; ?>
-            </div>
-            <span class="badge <?= $statusBadge[$p['status']]??'badge-gray' ?>"><?= $p['status'] ?></span>
-          </div>
-
-          <!-- Progress bar -->
-          <?php if(in_array($p['status'],['Active','Completed'])): ?>
-          <div style="margin-bottom:12px;">
-            <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:4px;">
-              <span>Timeline Progress</span><span><?= $progress ?>%</span>
-            </div>
-            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
-              <div style="height:100%;width:<?= $progress ?>%;background:<?= $p['status']==='Completed'?'var(--green)':($overdue?'var(--red)':'var(--brand)') ?>;border-radius:3px;transition:width .3s;"></div>
-            </div>
-          </div>
-          <?php endif; ?>
-
-          <!-- Meta grid -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <div style="background:var(--surface-2);border-radius:8px;padding:10px 12px;">
-              <div style="font-size:10.5px;font-weight:700;color:var(--muted-light);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Start</div>
-              <div style="font-size:13px;font-weight:600;color:var(--text);"><?= date('d M Y', strtotime($p['start_date'])) ?></div>
-            </div>
-            <div style="background:<?= $overdue?'var(--red-bg)':'var(--surface-2)' ?>;border-radius:8px;padding:10px 12px;">
-              <div style="font-size:10.5px;font-weight:700;color:var(--muted-light);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Deadline</div>
-              <div style="font-size:13px;font-weight:600;color:<?= $overdue?'var(--red)':'var(--text)' ?>;">
-                <?= date('d M Y', strtotime($p['deadline_date'])) ?>
-                <?php if($overdue): ?>
-                  <span style="font-size:11px;display:block;color:var(--red);">⚠ Overdue</span>
-                <?php elseif($p['status']==='Active' && $daysLeft >= 0): ?>
-                  <span style="font-size:11px;display:block;color:<?= $daysLeft<=7?'var(--yellow)':'var(--muted)' ?>;"><?= $daysLeft ?> day<?= $daysLeft!==1?'s':'' ?> left</span>
-                <?php endif; ?>
-              </div>
-            </div>
-            <div style="background:var(--surface-2);border-radius:8px;padding:10px 12px;">
-              <div style="font-size:10.5px;font-weight:700;color:var(--muted-light);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Working Hours</div>
-              <div style="font-size:13px;font-weight:700;color:var(--brand);"><?= number_format($p['total_hours'],1) ?> hrs</div>
-            </div>
-            <div style="background:var(--surface-2);border-radius:8px;padding:10px 12px;">
-              <div style="font-size:10.5px;font-weight:700;color:var(--muted-light);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Est. Cost</div>
-              <div style="font-size:13px;font-weight:700;color:var(--green-text);">
-                <?= $estCost > 0 ? '₹'.number_format($estCost,0) : '—' ?>
-              </div>
-            </div>
-          </div>
-
-          <?php if($p['description']): ?>
-          <div style="font-size:12.5px;color:var(--muted);line-height:1.5;border-top:1px solid var(--border-light);padding-top:10px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
-            <?= htmlspecialchars($p['description']) ?>
-          </div>
-          <?php endif; ?>
-
-        </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <h2>Projects <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= $total ?>)</span></h2>
       </div>
-      <?php endforeach; ?>
+      <table id="pTable">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Client</th>
+            <th>Timeline</th>
+            <th style="text-align:center;">Total Hrs</th>
+            <th style="text-align:center;">Worked Hrs</th>
+            <th>Progress</th>
+            <th>Deadline</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach($projects as $p):
+            $worked = (float)$p['worked_hours'];
+            $assigned = (float)$p['total_hours'];
+            $pct = $assigned > 0 ? min(100, round(($worked/$assigned)*100)) : 0;
+            $overdue = $p['deadline_date'] < date('Y-m-d');
+            $daysLeft = (int)ceil((strtotime($p['deadline_date']) - time()) / 86400);
+          ?>
+          <tr class="p-row" data-name="<?= htmlspecialchars(strtolower($p['project_name'].' '.$p['project_code'].' '.($p['client_name']??''))) ?>">
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                <code style="font-size:11px;background:var(--surface-2);padding:1px 6px;border-radius:4px;color:var(--muted);"><?= htmlspecialchars($p['project_code']) ?></code>
+              </div>
+              <div class="td-name"><?= htmlspecialchars($p['project_name']) ?></div>
+            </td>
+            <td class="text-muted text-sm"><?= htmlspecialchars($p['client_name'] ?: '—') ?></td>
+            <td class="text-sm">
+              <div style="color:var(--muted);"><?= date('d M Y', strtotime($p['start_date'])) ?></div>
+              <div style="color:var(--text-2);"><?= date('d M Y', strtotime($p['deadline_date'])) ?></div>
+            </td>
+            <td style="text-align:center;font-weight:700;color:var(--brand);"><?= number_format($assigned,1) ?></td>
+            <td style="text-align:center;font-weight:700;color:var(--green-text);"><?= number_format($worked,1) ?></td>
+            <td style="min-width:100px;">
+              <div style="display:flex;align-items:center;gap:5px;">
+                <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+                  <div style="height:100%;width:<?= $pct ?>%;background:<?= $pct>=100?'var(--green)':'var(--blue)' ?>;border-radius:3px;"></div>
+                </div>
+                <span style="font-size:11px;color:var(--muted);"><?= $pct ?>%</span>
+              </div>
+            </td>
+            <td>
+              <?php if($overdue): ?>
+                <span style="font-size:12px;color:var(--red);font-weight:700;">Overdue</span>
+              <?php elseif($daysLeft <= 7): ?>
+                <span style="font-size:12px;color:var(--yellow);font-weight:600;"><?= $daysLeft ?> day<?= $daysLeft!==1?'s':'' ?></span>
+              <?php else: ?>
+                <span style="font-size:12px;color:var(--muted);"><?= $daysLeft ?> days</span>
+              <?php endif; ?>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </div>
-
     <?php endif; ?>
 
   </div>
@@ -200,9 +176,7 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
 <script>
 function filterP(q) {
   q = q.toLowerCase();
-  document.querySelectorAll('.p-card').forEach(c => {
-    c.style.display = !q || c.dataset.name.includes(q) ? '' : 'none';
-  });
+  document.querySelectorAll('.p-row').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? '' : 'none'; });
 }
 </script>
 </body>
