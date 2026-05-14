@@ -139,7 +139,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash_error'] = "Work email '$newEmail' is already registered to another employee.";
                 header("Location: edit_employee.php?id=$id"); exit;
             }
-            // Also check users table — exclude the user account linked to THIS employee
+            // Check against other employees' personal emails
+            $dupAsPersonal = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=? AND id!=?");
+            $dupAsPersonal->execute([$newEmail, $id]);
+            if ($dupAsPersonal->fetch()) {
+                $_SESSION['flash_error'] = "The email '$newEmail' is already in use as a personal email by another employee.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+            // Check users table (excluding current employee's own account)
             $dupUser = $db->prepare("SELECT id FROM users WHERE LOWER(email)=? AND LOWER(email)!=?");
             $dupUser->execute([$newEmail, strtolower($currentEmpEmail)]);
             if ($dupUser->fetch()) {
