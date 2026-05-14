@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
 require_once __DIR__ . '/task_config.php';
@@ -10,7 +10,7 @@ $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-// ── POST: Update status ──────────────────────────────────────
+// â”€â”€ POST: Update status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_status') {
     $taskId = (int)($_POST['task_id'] ?? 0);
     $status = $_POST['status'] ?? '';
@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     header("Location: tasks.php".($projId?"?project_id=$projId":'')); exit;
 }
 
-// ── POST: Delete ─────────────────────────────────────────────
+// â”€â”€ POST: Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_task') {
     $taskId = (int)($_POST['task_id'] ?? 0);
     $projId = (int)($_POST['project_id'] ?? 0);
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     header("Location: tasks.php".($projId?"?project_id=$projId":'')); exit;
 }
 
-// ── Data ─────────────────────────────────────────────────────
+// â”€â”€ Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $myProjects = $db->prepare("
     SELECT id, project_name, project_code, status, deadline_date, total_hours
     FROM projects WHERE manager_id=? AND status NOT IN ('Cancelled')
@@ -115,7 +115,7 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tasks – HRMS Portal</title>
+<title>Tasks â€“ HRMS Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
@@ -164,8 +164,8 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       <h1 style="font-size:20px;font-weight:800;color:var(--text);line-height:1.3;"><?= htmlspecialchars($curProj['project_name']) ?></h1>
       <div style="font-size:13px;color:var(--muted);margin-top:4px;">
         Deadline: <?= date('d M Y', strtotime($curProj['deadline_date'])) ?>
-        &nbsp;·&nbsp; <?= number_format($curProj['total_hours'],1) ?> total hrs
-        &nbsp;·&nbsp; <?= array_sum($statusCounts) ?> task(s)
+        &nbsp;Â·&nbsp; <?= number_format($curProj['total_hours'],1) ?> total hrs
+        &nbsp;Â·&nbsp; <?= array_sum($statusCounts) ?> task(s)
       </div>
     </div>
 
@@ -194,7 +194,7 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
           <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-light);color:var(--brand);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><?= strtoupper(substr($ms['emp_name'],0,1)) ?></div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($ms['emp_name']) ?></div>
-            <div style="font-size:11px;color:var(--muted);"><?= $ms['cnt'] ?> task(s) · <?= number_format($ms['total'],1) ?> hrs</div>
+            <div style="font-size:11px;color:var(--muted);"><?= $ms['cnt'] ?> task(s) Â· <?= number_format($ms['total'],1) ?> hrs</div>
           </div>
         </div>
         <div class="prog-bar"><div class="prog-fill" style="width:<?= $pct ?>%;"></div></div>
@@ -212,9 +212,9 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       <div style="position:relative;min-width:240px;flex:0 1 300px;">
         <select id="projectSelect" class="form-control" style="font-size:13px;font-weight:600;padding:8px 36px 8px 12px;appearance:none;cursor:pointer;background:var(--surface);"
           onchange="location.href='tasks.php?project_id='+this.value">
-          <option value="">— Select Project —</option>
+          <option value="">â€” Select Project â€”</option>
           <?php foreach($myProjects as $proj):
-            $dot = $proj['status']==='Active'?'🟢':($proj['status']==='Planning'?'🟡':'⚪');
+            $dot = $proj['status']==='Active'?'ðŸŸ¢':($proj['status']==='Planning'?'ðŸŸ¡':'âšª');
           ?>
           <option value="<?= $proj['id'] ?>" <?= $selectedProject==$proj['id']?'selected':'' ?>>
             <?= $dot ?> <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
@@ -228,7 +228,7 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       <input type="hidden" name="project_id" value="<?= $selectedProject ?>">
       <div class="search-box" style="min-width:180px;flex:0 1 220px;">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search task or member…">
+        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search task or memberâ€¦">
       </div>
       <select name="member_id" class="form-control" style="font-size:13px;padding:8px 12px;width:auto;min-width:150px;max-width:200px;">
         <option value="">All Members</option>
@@ -291,7 +291,7 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
               </div>
             </td>
             <td class="font-semibold text-sm"><?= htmlspecialchars($t['subtask']) ?></td>
-            <td class="text-sm text-muted"><?= date('d M', strtotime($t['from_date'])) ?> – <?= date('d M Y', strtotime($t['to_date'])) ?></td>
+            <td class="text-sm text-muted"><?= date('d M', strtotime($t['from_date'])) ?> â€“ <?= date('d M Y', strtotime($t['to_date'])) ?></td>
             <td style="text-align:center;font-weight:700;color:var(--brand);"><?= number_format($t['hours'],1) ?></td>
             <td style="text-align:center;font-weight:700;color:var(--green-text);"><?= number_format($utilized,1) ?></td>
             <td style="min-width:90px;">
@@ -329,7 +329,6 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
     </div>
     <?php endif; ?>
 
-    <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
