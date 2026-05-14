@@ -22,21 +22,18 @@ $workHrs = round($workSec / 3600, 1);
 $workH = floor($workSec / 3600);
 $workM = floor(($workSec % 3600) / 60);
 
-// Get all tasks for today (including completed — they won't have remaining hrs so input stays 0)
 $allTasks = $db->prepare("
     SELECT ta.id, ta.subtask, ta.hours AS assigned_hours, ta.status,
            p.project_name, p.project_code,
            COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl WHERE tpl.task_id = ta.id), 0) AS utilized_hours
     FROM task_assignments ta
     JOIN projects p ON ta.project_id = p.id
-    WHERE ta.assigned_to = ?
-      AND ta.from_date <= ? AND ta.to_date >= ?
+    WHERE ta.assigned_to = ? AND ta.from_date <= ? AND ta.to_date >= ?
     ORDER BY ta.status = 'Completed' ASC, p.project_name, ta.subtask
 ");
 $allTasks->execute([$uid, $today, $today]);
 $allTasks = $allTasks->fetchAll();
 
-// Split into active and completed
 $activeTasks = array_filter($allTasks, fn($t) => $t['status'] !== 'Completed');
 $completedTasks = array_filter($allTasks, fn($t) => $t['status'] === 'Completed');
 ?>
@@ -47,150 +44,146 @@ $completedTasks = array_filter($allTasks, fn($t) => $t['status'] === 'Completed'
 <title>Clock Out – HRMS Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/style.css">
 <style>
-.co-shell{display:grid;grid-template-rows:auto 1fr auto;height:calc(100vh - 56px);overflow:hidden;}
-.co-header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between;}
-.co-header-left h1{font-size:18px;font-weight:800;color:var(--text);margin:0 0 2px;}
-.co-header-left p{font-size:12.5px;color:var(--muted);margin:0;}
-.co-stats{display:flex;gap:20px;align-items:center;}
-.co-stat{text-align:center;}
-.co-stat .val{font-size:20px;font-weight:800;line-height:1;}
-.co-stat .lbl{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-top:2px;}
-.co-body{overflow-y:auto;padding:20px 28px;}
-.co-footer{background:var(--surface);border-top:1.5px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;}
-.task-card{display:grid;grid-template-columns:1fr 70px 70px 80px;gap:12px;align-items:center;padding:14px 16px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;margin-bottom:8px;transition:border-color .12s;}
-.task-card:hover{border-color:var(--brand);}
-.task-card.done{opacity:.5;background:var(--surface-2);}
-.tc-name{font-size:13px;font-weight:700;color:var(--text);}
-.tc-proj{font-size:11px;color:var(--muted);}
-.tc-num{font-size:13px;font-weight:700;text-align:center;}
-.tc-input{width:100%;font-size:13px;font-weight:700;text-align:center;padding:7px 4px;border:1.5px solid var(--border);border-radius:7px;background:#fff;transition:border-color .12s;}
-.tc-input:focus{border-color:var(--brand);outline:none;box-shadow:0 0 0 3px var(--brand-light);}
-.tc-input.err{border-color:var(--red);background:#fff5f5;}
-.tc-input:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed;}
-.section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;padding-left:4px;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.popup{background:#fff;border-radius:20px;box-shadow:0 25px 60px rgba(0,0,0,.2),0 0 0 1px rgba(0,0,0,.05);width:100%;max-width:580px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;animation:popIn .3s ease;}
+@keyframes popIn{from{transform:scale(.95) translateY(10px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.pop-header{background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:20px 24px;color:#fff;position:relative;}
+.pop-header h2{font-size:18px;font-weight:800;margin-bottom:4px;}
+.pop-header p{font-size:12.5px;opacity:.85;}
+.pop-header .close-btn{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.pop-header .close-btn:hover{background:rgba(255,255,255,.3);}
+.time-row{display:flex;gap:16px;margin-top:12px;}
+.time-chip{background:rgba(255,255,255,.15);border-radius:10px;padding:8px 14px;text-align:center;}
+.time-chip .tv{font-size:16px;font-weight:800;letter-spacing:-.5px;}
+.time-chip .tl{font-size:10px;opacity:.7;text-transform:uppercase;margin-top:1px;}
+.pop-body{flex:1;overflow-y:auto;padding:16px 20px;}
+.pop-footer{border-top:1px solid #e5e7eb;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;background:#f9fafb;}
+.task-item{display:grid;grid-template-columns:1fr 60px 60px 72px;gap:8px;align-items:center;padding:12px 14px;border-radius:12px;border:1.5px solid #e5e7eb;margin-bottom:8px;transition:all .15s;}
+.task-item:hover{border-color:#a5b4fc;box-shadow:0 2px 8px rgba(79,70,229,.06);}
+.task-item.done{opacity:.45;background:#f9fafb;}
+.ti-name{font-size:12.5px;font-weight:700;color:#1e293b;}
+.ti-proj{font-size:10.5px;color:#94a3b8;margin-top:1px;}
+.ti-num{font-size:12px;font-weight:700;text-align:center;color:#64748b;}
+.ti-input{width:100%;font-size:13px;font-weight:700;text-align:center;padding:7px 4px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;transition:all .15s;}
+.ti-input:focus{border-color:#4f46e5;outline:none;box-shadow:0 0 0 3px rgba(79,70,229,.1);}
+.ti-input.err{border-color:#ef4444;background:#fef2f2;}
+.ti-input:disabled{background:#f1f5f9;color:#94a3b8;cursor:not-allowed;}
+.col-head{display:grid;grid-template-columns:1fr 60px 60px 72px;gap:8px;padding:0 14px 8px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;}
+.sec-label{font-size:10.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px 4px;}
+.btn-primary{background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border:none;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,70,229,.3);}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-ghost{background:transparent;color:#64748b;border:1.5px solid #e2e8f0;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:all .12s;}
+.btn-ghost:hover{border-color:#a5b4fc;color:#4f46e5;}
+.total-text{font-size:13px;color:#64748b;}
+.total-val{font-size:18px;font-weight:800;color:#4f46e5;}
+.warn{font-size:11.5px;color:#ef4444;font-weight:600;margin-top:2px;display:none;}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);display:none;z-index:999;}
 </style>
 </head>
 <body>
-<div class="app-shell">
-<?php include __DIR__ . '/sidebar.php'; ?>
-<div class="main-content" style="display:flex;flex-direction:column;height:100vh;">
 
-  <header class="topbar" style="flex-shrink:0;">
-    <div class="topbar-left"><span class="page-title">Clock Out</span></div>
-    <div class="topbar-right">
-      <span class="role-chip">Employee</span>
-      <div class="topbar-avatar"><?= strtoupper(substr($_SESSION['user_name'],0,1)) ?></div>
-      <span class="topbar-name"><?= htmlspecialchars($_SESSION['user_name']) ?></span>
-    </div>
-  </header>
-
-  <div class="co-shell">
-    <!-- Header -->
-    <div class="co-header">
-      <div class="co-header-left">
-        <h1>Log Today's Work</h1>
-        <p>Enter hours per task. Total must not exceed your worked time.</p>
+<div class="popup">
+  <!-- Header -->
+  <div class="pop-header">
+    <button class="close-btn" onclick="location.href='attendance.php'">✕</button>
+    <h2>Clock Out</h2>
+    <p>Log hours for today's tasks</p>
+    <div class="time-row">
+      <div class="time-chip">
+        <div class="tv"><?= $clockInTime ?></div>
+        <div class="tl">Clock In</div>
       </div>
-      <div class="co-stats">
-        <div class="co-stat">
-          <div class="val" style="color:var(--brand);"><?= $clockInTime ?></div>
-          <div class="lbl">Clock In</div>
-        </div>
-        <div class="co-stat">
-          <div class="val" style="color:var(--text);" id="liveNow"><?= $now ?></div>
-          <div class="lbl">Now</div>
-        </div>
-        <div class="co-stat">
-          <div class="val" style="color:var(--green-text);"><?= $workH ?>h <?= $workM ?>m</div>
-          <div class="lbl">Worked</div>
-        </div>
+      <div class="time-chip">
+        <div class="tv" id="liveNow"><?= $now ?></div>
+        <div class="tl">Now</div>
+      </div>
+      <div class="time-chip">
+        <div class="tv"><?= $workH ?>h <?= $workM ?>m</div>
+        <div class="tl">Worked</div>
+      </div>
+      <div class="time-chip" style="background:rgba(255,255,255,.25);">
+        <div class="tv"><?= $workHrs ?></div>
+        <div class="tl">Max Hrs</div>
       </div>
     </div>
+  </div>
 
-    <!-- Body -->
-    <div class="co-body">
-      <?php if(empty($activeTasks) && empty($completedTasks)): ?>
-        <div style="text-align:center;padding:40px 20px;">
-          <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px;">No tasks for today</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Clock out directly.</div>
-          <button class="btn btn-primary" id="btnDirect" onclick="clockOut([])">Clock Out Now</button>
-          <a href="attendance.php" class="btn btn-secondary" style="margin-left:8px;">Cancel</a>
+  <!-- Body -->
+  <div class="pop-body">
+    <?php if(empty($activeTasks) && empty($completedTasks)): ?>
+      <div style="text-align:center;padding:32px 16px;">
+        <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px;">No tasks for today</div>
+        <div style="font-size:13px;color:#94a3b8;margin-bottom:16px;">Clock out directly.</div>
+        <button class="btn-primary" id="btnDirect" onclick="clockOut([])">Clock Out Now</button>
+      </div>
+    <?php else: ?>
+
+      <div class="col-head">
+        <div>Task</div>
+        <div style="text-align:center;">Total</div>
+        <div style="text-align:center;">Left</div>
+        <div style="text-align:center;">Today</div>
+      </div>
+
+      <?php if(!empty($activeTasks)): ?>
+      <?php foreach($activeTasks as $t):
+        $remaining = max(0, round((float)$t['assigned_hours'] - (float)$t['utilized_hours'], 1));
+      ?>
+      <div class="task-item">
+        <div>
+          <div class="ti-name"><?= htmlspecialchars($t['subtask']) ?></div>
+          <div class="ti-proj"><?= htmlspecialchars($t['project_code']) ?> · <?= htmlspecialchars($t['project_name']) ?></div>
         </div>
-      <?php else: ?>
-
-        <!-- Column headers -->
-        <div style="display:grid;grid-template-columns:1fr 70px 70px 80px;gap:12px;padding:0 16px 6px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">
-          <div>Task</div>
-          <div style="text-align:center;">Allotted</div>
-          <div style="text-align:center;">Remaining</div>
-          <div style="text-align:center;">Hrs Today</div>
+        <div class="ti-num" style="color:#4f46e5;"><?= number_format($t['assigned_hours'],1) ?></div>
+        <div class="ti-num" style="color:<?= $remaining>0?'#059669':'#ef4444' ?>;"><?= number_format($remaining,1) ?></div>
+        <div>
+          <?php if($remaining > 0): ?>
+          <input type="number" class="ti-input" data-id="<?= $t['id'] ?>" data-max="<?= $remaining ?>" min="0" max="<?= $remaining ?>" step="0.5" value="" placeholder="—" oninput="validate()">
+          <?php else: ?>
+          <input type="number" class="ti-input" disabled placeholder="0">
+          <?php endif; ?>
         </div>
-
-        <!-- Active Tasks -->
-        <?php if(!empty($activeTasks)): ?>
-        <div class="section-label">Active Tasks</div>
-        <?php foreach($activeTasks as $t):
-          $remaining = max(0, round((float)$t['assigned_hours'] - (float)$t['utilized_hours'], 1));
-        ?>
-        <div class="task-card">
-          <div>
-            <div class="tc-name"><?= htmlspecialchars($t['subtask']) ?></div>
-            <div class="tc-proj"><?= htmlspecialchars($t['project_code']) ?> · <?= htmlspecialchars($t['project_name']) ?></div>
-          </div>
-          <div class="tc-num" style="color:var(--brand);"><?= number_format($t['assigned_hours'],1) ?></div>
-          <div class="tc-num" style="color:<?= $remaining>0?'var(--green-text)':'var(--red)' ?>;"><?= number_format($remaining,1) ?></div>
-          <div>
-            <?php if($remaining > 0): ?>
-            <input type="number" class="tc-input" id="hrs-<?= $t['id'] ?>" data-id="<?= $t['id'] ?>" data-max="<?= $remaining ?>" min="0" max="<?= $remaining ?>" step="0.5" value="" placeholder="—" oninput="validate()">
-            <?php else: ?>
-            <input type="number" class="tc-input" disabled value="" placeholder="0">
-            <?php endif; ?>
-          </div>
-        </div>
-        <?php endforeach; ?>
-        <?php endif; ?>
-
-        <!-- Completed Tasks -->
-        <?php if(!empty($completedTasks)): ?>
-        <div class="section-label" style="margin-top:20px;">Completed Tasks</div>
-        <?php foreach($completedTasks as $t): ?>
-        <div class="task-card done">
-          <div>
-            <div class="tc-name"><?= htmlspecialchars($t['subtask']) ?></div>
-            <div class="tc-proj"><?= htmlspecialchars($t['project_code']) ?> · <?= htmlspecialchars($t['project_name']) ?></div>
-          </div>
-          <div class="tc-num" style="color:var(--muted);"><?= number_format($t['assigned_hours'],1) ?></div>
-          <div class="tc-num" style="color:var(--muted);">0.0</div>
-          <div><input type="number" class="tc-input" disabled value="" placeholder="✓"></div>
-        </div>
-        <?php endforeach; ?>
-        <?php endif; ?>
-
+      </div>
+      <?php endforeach; ?>
       <?php endif; ?>
-    </div>
 
-    <!-- Footer -->
-    <?php if(!empty($activeTasks) || !empty($completedTasks)): ?>
-    <div class="co-footer">
-      <div>
-        <span style="font-size:13px;color:var(--muted);">Total logged: </span>
-        <strong id="totalHrs" style="font-size:17px;color:var(--brand);">0.0</strong>
-        <span style="font-size:13px;color:var(--muted);"> / <?= $workHrs ?> hrs max</span>
-        <div id="warnMsg" class="warn-text" style="display:none;font-size:12px;color:var(--red);font-weight:600;margin-top:2px;"></div>
+      <?php if(!empty($completedTasks)): ?>
+      <div class="sec-label">Completed</div>
+      <?php foreach($completedTasks as $t): ?>
+      <div class="task-item done">
+        <div>
+          <div class="ti-name"><?= htmlspecialchars($t['subtask']) ?></div>
+          <div class="ti-proj"><?= htmlspecialchars($t['project_code']) ?> · <?= htmlspecialchars($t['project_name']) ?></div>
+        </div>
+        <div class="ti-num"><?= number_format($t['assigned_hours'],1) ?></div>
+        <div class="ti-num">0.0</div>
+        <div><input type="number" class="ti-input" disabled placeholder="✓"></div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <a href="attendance.php" class="btn btn-secondary btn-sm">Cancel</a>
-        <button class="btn btn-primary" id="btnClockOut" onclick="submitClockOut()">Clock Out & Save</button>
-      </div>
-    </div>
+      <?php endforeach; ?>
+      <?php endif; ?>
+
     <?php endif; ?>
   </div>
-</div>
+
+  <!-- Footer -->
+  <?php if(!empty($activeTasks) || !empty($completedTasks)): ?>
+  <div class="pop-footer">
+    <div>
+      <div class="total-text">Logged: <span class="total-val" id="totalHrs">0.0</span> / <?= $workHrs ?> hrs</div>
+      <div class="warn" id="warnMsg"></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <a href="attendance.php" class="btn-ghost">Cancel</a>
+      <button class="btn-primary" id="btnClockOut" onclick="submitClockOut()">Clock Out & Save</button>
+    </div>
+  </div>
+  <?php endif; ?>
 </div>
 
-<div id="toast" style="position:fixed;bottom:20px;right:20px;background:#111827;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.15);display:none;z-index:999;"></div>
+<div id="toast"></div>
 
 <script>
 const MAX_HRS = <?= $workHrs ?>;
@@ -198,66 +191,59 @@ const MAX_HRS = <?= $workHrs ?>;
 function tick(){const n=new Date();document.getElementById('liveNow').textContent=n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}).toUpperCase();}
 tick();setInterval(tick,30000);
 
-function validate() {
-  let total = 0, hasErr = false;
-  document.querySelectorAll('.tc-input:not(:disabled)').forEach(inp => {
-    const val = parseFloat(inp.value) || 0;
-    const max = parseFloat(inp.dataset.max);
-    total += val;
-    if (val > max) { inp.classList.add('err'); hasErr = true; }
-    else { inp.classList.remove('err'); }
+function validate(){
+  let total=0,hasErr=false;
+  document.querySelectorAll('.ti-input:not(:disabled)').forEach(inp=>{
+    const val=parseFloat(inp.value)||0;
+    const max=parseFloat(inp.dataset.max);
+    total+=val;
+    if(val>max){inp.classList.add('err');hasErr=true;}else{inp.classList.remove('err');}
   });
-  document.getElementById('totalHrs').textContent = total.toFixed(1);
-  const warn = document.getElementById('warnMsg');
-  const btn = document.getElementById('btnClockOut');
-  if (total > MAX_HRS) {
-    warn.textContent = '⚠ Exceeds worked time (' + MAX_HRS + ' hrs)';
-    warn.style.display = 'block'; btn.disabled = true;
-  } else if (hasErr) {
-    warn.textContent = '⚠ Some tasks exceed remaining hours';
-    warn.style.display = 'block'; btn.disabled = true;
-  } else {
-    warn.style.display = 'none'; btn.disabled = false;
-  }
+  document.getElementById('totalHrs').textContent=total.toFixed(1);
+  const warn=document.getElementById('warnMsg');
+  const btn=document.getElementById('btnClockOut');
+  if(total>MAX_HRS){warn.textContent='⚠ Exceeds worked time ('+MAX_HRS+' hrs)';warn.style.display='block';btn.disabled=true;}
+  else if(hasErr){warn.textContent='⚠ Some tasks exceed remaining hours';warn.style.display='block';btn.disabled=true;}
+  else{warn.style.display='none';btn.disabled=false;}
 }
 
-function submitClockOut() {
-  const progress = [];
-  document.querySelectorAll('.tc-input:not(:disabled)').forEach(inp => {
-    const hrs = parseFloat(inp.value) || 0;
-    if (hrs > 0) {
-      const id = parseInt(inp.dataset.id);
-      const max = parseFloat(inp.dataset.max);
-      const status = (max - hrs) <= 0 ? 'Completed' : 'In Progress';
-      progress.push({task_id: id, hours: hrs, progress: status});
+function submitClockOut(){
+  const progress=[];
+  document.querySelectorAll('.ti-input:not(:disabled)').forEach(inp=>{
+    const hrs=parseFloat(inp.value)||0;
+    if(hrs>0){
+      const id=parseInt(inp.dataset.id);
+      const max=parseFloat(inp.dataset.max);
+      const status=(max-hrs)<=0?'Completed':'In Progress';
+      progress.push({task_id:id,hours:hrs,progress:status});
     }
   });
   clockOut(progress);
 }
 
-function clockOut(progress) {
-  const btn = document.getElementById('btnClockOut') || document.getElementById('btnDirect');
+function clockOut(progress){
+  const btn=document.getElementById('btnClockOut')||document.getElementById('btnDirect');
   if(btn){btn.disabled=true;btn.textContent='Clocking out…';}
-  const doIt = (lat, lng) => {
-    const fd = new FormData();
-    fd.append('action', 'clock_out');
-    if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
-    fd.append('task_progress', JSON.stringify(progress));
-    fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+  const doIt=(lat,lng)=>{
+    const fd=new FormData();
+    fd.append('action','clock_out');
+    if(lat!==null){fd.append('lat',lat);fd.append('lng',lng);}
+    fd.append('task_progress',JSON.stringify(progress));
+    fetch('../auth/attendance_action.php',{method:'POST',body:fd})
       .then(r=>r.json())
       .then(data=>{
-        showToast(data.msg, data.ok?'#10b981':'#ef4444');
-        if(data.ok) setTimeout(()=>location.href='attendance.php',1000);
+        showToast(data.msg,data.ok?'#10b981':'#ef4444');
+        if(data.ok)setTimeout(()=>location.href='attendance.php',1000);
         else if(btn){btn.disabled=false;btn.textContent='Clock Out & Save';}
       })
       .catch(()=>{showToast('Network error.','#ef4444');if(btn){btn.disabled=false;btn.textContent='Clock Out & Save';}});
   };
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(pos=>doIt(pos.coords.latitude,pos.coords.longitude),()=>doIt(null,null),{enableHighAccuracy:true,timeout:5000,maximumAge:0});
-  } else doIt(null,null);
+  }else doIt(null,null);
 }
 
-function showToast(msg,color){const t=document.getElementById('toast');t.textContent=msg;t.style.background=color||'#111827';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
+function showToast(msg,color){const t=document.getElementById('toast');t.textContent=msg;t.style.background=color||'#1e293b';t.style.display='block';setTimeout(()=>t.style.display='none',4000);}
 </script>
 </body>
 </html>
