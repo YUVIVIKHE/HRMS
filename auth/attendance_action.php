@@ -35,7 +35,6 @@ function haversine($lat1, $lng1, $lat2, $lng2): float {
 
 // ── Find matching location for this user ─────────────────────
 function findLocation(PDO $db, int $uid, ?float $lat, ?float $lng): ?array {
-    // Get locations assigned to this user; fall back to global (unassigned) locations
     $assigned = $db->prepare("
         SELECT al.* FROM attendance_locations al
         INNER JOIN user_locations ul ON al.id = ul.location_id
@@ -45,7 +44,6 @@ function findLocation(PDO $db, int $uid, ?float $lat, ?float $lng): ?array {
     $assigned->execute([$uid]);
     $locations = $assigned->fetchAll();
 
-    // If no specific assignment, use all active locations (global fallback)
     if (empty($locations)) {
         $locations = $db->query("SELECT * FROM attendance_locations WHERE is_active = 1 ORDER BY is_remote ASC")->fetchAll();
     }
@@ -60,7 +58,6 @@ function findLocation(PDO $db, int $uid, ?float $lat, ?float $lng): ?array {
 }
 
 if ($action === 'clock_in') {
-    // Check already clocked in today
     $existing = $db->prepare("SELECT id, clock_in FROM attendance_logs WHERE user_id = ? AND log_date = ?");
     $existing->execute([$uid, $today]);
     $row = $existing->fetch();
@@ -75,7 +72,6 @@ if ($action === 'clock_in') {
     }
 
     $status = $loc['is_remote'] ? 'remote' : 'present';
-    // Late if after 09:30
     if (!$loc['is_remote'] && date('H:i') > '09:30') $status = 'late';
 
     if ($row) {
@@ -90,6 +86,36 @@ if ($action === 'clock_in') {
     exit;
 }
 
+// ── Get assigned tasks (for clock-out modal) ─────────────────
+if ($action === 'get_tasks') {
+    $tasks = $db->prepare("
+        SELECT ta.id, ta.subtask, ta.status, ta.hours AS assigned_hours,
+               p.project_name, p.project_code,
+               COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl WHERE tpl.task_id = ta.id), 0) AS utilized_hours
+        FROM task_assignments ta
+        JOIN projects p ON ta.project_id = p.id
+        WHERE ta.assigned_to = ? AND ta.status != 'Completed'
+          AND ta.from_date <= ? AND ta.to_date >= ?
+        ORDER BY p.project_name, ta.subtask
+    ");
+    $tasks->execute([$uid, $today, $today]);
+    $tasks = $tasks->fetchAll(PDO::FETCH_ASSOC);
+
+    // Get today's work hours
+    $row = $db->prepare("SELECT clock_in, work_seconds FROM attendance_logs WHERE user_id = ? AND log_date = ?");
+    $row->execute([$uid, $today]);
+    $row = $row->fetch();
+    $workHrs = 0;
+    if ($row && $row['clock_in']) {
+        $workSec = strtotime($now) - strtotime($row['clock_in']);
+        $workHrs = round($workSec / 3600, 2);
+    }
+
+    echo json_encode(['ok' => true, 'tasks' => $tasks, 'work_hours' => $workHrs]);
+    exit;
+}
+
+// ── Clock out with task progress ─────────────────────────────
 if ($action === 'clock_out') {
     $row = $db->prepare("SELECT * FROM attendance_logs WHERE user_id = ? AND log_date = ?");
     $row->execute([$uid, $today]);
@@ -105,6 +131,30 @@ if ($action === 'clock_out') {
     $workSec = strtotime($now) - strtotime($row['clock_in']);
     $db->prepare("UPDATE attendance_logs SET clock_out=?, work_seconds=?, clock_out_lat=?, clock_out_lng=? WHERE id=?")
        ->execute([$now, $workSec, $lat, $lng, $row['id']]);
+
+    // Save task progress if provided
+    $taskProgress = json_decode($_POST['task_progress'] ?? '[]', true);
+    if (!empty($taskProgress) && is_array($taskProgress)) {
+        $insertStmt = $db->prepare("INSERT INTO task_progress_logs (task_id, user_id, attendance_id, log_date, hours_worked, progress) VALUES (?,?,?,?,?,?)");
+        $updateStmt = $db->prepare("UPDATE task_assignments SET status=? WHERE id=? AND assigned_to=?");
+
+        foreach ($taskProgress as $tp) {
+            $taskId = (int)($tp['task_id'] ?? 0);
+            $hours  = (float)($tp['hours'] ?? 0);
+            $prog   = $tp['progress'] ?? 'In Progress';
+
+            if ($taskId <= 0 || $hours <= 0) continue;
+            if (!in_array($prog, ['Pending','In Progress','Completed','On Hold'])) $prog = 'In Progress';
+
+            // Verify task belongs to this user
+            $chk = $db->prepare("SELECT id FROM task_assignments WHERE id=? AND assigned_to=?");
+            $chk->execute([$taskId, $uid]);
+            if (!$chk->fetch()) continue;
+
+            $insertStmt->execute([$taskId, $uid, $row['id'], $today, $hours, $prog]);
+            $updateStmt->execute([$prog, $taskId, $uid]);
+        }
+    }
 
     $h = floor($workSec/3600); $m = floor(($workSec%3600)/60);
     $hrsStr = sprintf('%dh %02dm', $h, $m);

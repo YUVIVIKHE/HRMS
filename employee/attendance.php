@@ -283,6 +283,40 @@ if (!function_exists('fmtHrs')) {
   </div>
 </div>
 
+<!-- Task Progress Modal (shown during clock-out) -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header">
+      <div>
+        <h3>Log Task Progress</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:2px;">Select tasks you worked on today and log hours. Total worked: <strong id="totalWorkHrs">0</strong> hrs | Allocated: <strong id="allocatedHrs">0</strong> hrs</p>
+      </div>
+      <button class="modal-close" onclick="skipAndClockOut()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="max-height:400px;overflow-y:auto;padding:0;">
+      <table style="width:100%;font-size:13px;">
+        <thead>
+          <tr style="background:var(--surface-2);">
+            <th style="padding:10px 14px;text-align:left;">Task</th>
+            <th style="padding:10px 8px;text-align:center;width:70px;">Assigned</th>
+            <th style="padding:10px 8px;text-align:center;width:70px;">Done</th>
+            <th style="padding:10px 8px;text-align:center;width:70px;">Remaining</th>
+            <th style="padding:10px 8px;text-align:center;width:80px;">Hrs Today</th>
+            <th style="padding:10px 8px;text-align:center;width:120px;">Progress</th>
+          </tr>
+        </thead>
+        <tbody id="taskModalBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:space-between;">
+      <button type="button" class="btn btn-secondary" onclick="skipAndClockOut()">Skip & Clock Out</button>
+      <button type="button" class="btn btn-primary" onclick="confirmClockOut()">Save & Clock Out</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -312,38 +346,158 @@ function validateReg() {
 }
 
 // Clock in/out
+let pendingLat = null, pendingLng = null;
+
 function doAction(action) {
   const btn = document.getElementById(action === 'clock_in' ? 'btnIn' : 'btnOut');
   btn.disabled = true;
   btn.textContent = 'Please wait…';
 
-  const proceed = (lat, lng) => {
-    const fd = new FormData();
-    fd.append('action', action);
-    if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
+  const getLocation = () => new Promise(resolve => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
+        () => resolve({lat: null, lng: null}),
+        {timeout: 8000}
+      );
+    } else resolve({lat: null, lng: null});
+  });
 
-    fetch('../auth/attendance_action.php', { method: 'POST', body: fd })
-      .then(r => r.json())
-      .then(data => {
-        showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
-        if (data.ok) setTimeout(() => location.reload(), 1800);
-        else { btn.disabled = false; btn.textContent = action === 'clock_in' ? 'Clock In' : 'Clock Out'; }
-      })
-      .catch(() => {
-        showToast('Network error. Please try again.', '#ef4444');
-        btn.disabled = false;
-      });
-  };
-
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      pos => proceed(pos.coords.latitude, pos.coords.longitude),
-      ()  => proceed(null, null),
-      { timeout: 8000 }
-    );
+  if (action === 'clock_in') {
+    getLocation().then(({lat, lng}) => {
+      const fd = new FormData();
+      fd.append('action', 'clock_in');
+      if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
+      fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(data => {
+          showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
+          if (data.ok) setTimeout(() => location.reload(), 1800);
+          else { btn.disabled = false; btn.textContent = 'Clock In'; }
+        })
+        .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; });
+    });
   } else {
-    proceed(null, null);
+    // Clock out — first fetch tasks, then show modal
+    getLocation().then(({lat, lng}) => {
+      pendingLat = lat; pendingLng = lng;
+      const fd = new FormData();
+      fd.append('action', 'get_tasks');
+      fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok && data.tasks && data.tasks.length > 0) {
+            showTaskModal(data.tasks, data.work_hours);
+          } else {
+            // No active tasks, clock out directly
+            performClockOut([]);
+          }
+        })
+        .catch(() => { performClockOut([]); });
+    });
   }
+}
+
+function showTaskModal(tasks, workHours) {
+  const modal = document.getElementById('taskModal');
+  const tbody = document.getElementById('taskModalBody');
+  document.getElementById('totalWorkHrs').textContent = workHours.toFixed(1);
+  tbody.innerHTML = '';
+
+  tasks.forEach(t => {
+    const remaining = Math.max(0, (parseFloat(t.assigned_hours) - parseFloat(t.utilized_hours)).toFixed(1));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" class="task-check" data-id="${t.id}" style="width:15px;height:15px;accent-color:var(--brand);" onchange="toggleTaskRow(this)">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${escHtml(t.subtask)}</div>
+            <div style="font-size:11.5px;color:var(--muted);">${escHtml(t.project_name)} (${escHtml(t.project_code)})</div>
+          </div>
+        </label>
+      </td>
+      <td style="text-align:center;font-size:12.5px;color:var(--muted);">${parseFloat(t.assigned_hours).toFixed(1)}</td>
+      <td style="text-align:center;font-size:12.5px;color:var(--green-text);font-weight:600;">${parseFloat(t.utilized_hours).toFixed(1)}</td>
+      <td style="text-align:center;font-size:12.5px;color:var(--brand);font-weight:600;">${remaining}</td>
+      <td>
+        <input type="number" class="form-control task-hours" data-id="${t.id}" min="0.5" max="${workHours}" step="0.5" value="" placeholder="0" style="width:70px;font-size:12px;padding:5px 8px;text-align:center;" disabled>
+      </td>
+      <td>
+        <select class="form-control task-progress" data-id="${t.id}" style="font-size:12px;padding:5px 8px;width:auto;" disabled>
+          <option value="In Progress" ${t.status==='In Progress'?'selected':''}>In Progress</option>
+          <option value="Completed">Completed</option>
+          <option value="On Hold">On Hold</option>
+          <option value="Pending" ${t.status==='Pending'?'selected':''}>Pending</option>
+        </select>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  modal.classList.add('open');
+  document.getElementById('btnOut').disabled = false;
+  document.getElementById('btnOut').textContent = 'Clock Out';
+}
+
+function toggleTaskRow(checkbox) {
+  const id = checkbox.dataset.id;
+  const row = checkbox.closest('tr');
+  const hrsInput = row.querySelector('.task-hours');
+  const progSelect = row.querySelector('.task-progress');
+  hrsInput.disabled = !checkbox.checked;
+  progSelect.disabled = !checkbox.checked;
+  if (checkbox.checked) { hrsInput.focus(); } else { hrsInput.value = ''; }
+  updateAllocated();
+}
+
+function updateAllocated() {
+  let total = 0;
+  document.querySelectorAll('.task-hours').forEach(inp => { total += parseFloat(inp.value) || 0; inp.addEventListener('input', updateAllocated); });
+  const el = document.getElementById('allocatedHrs');
+  if (el) el.textContent = total.toFixed(1);
+}
+document.addEventListener('input', e => { if(e.target.classList.contains('task-hours')) updateAllocated(); });
+
+function confirmClockOut() {
+  const progress = [];
+  document.querySelectorAll('.task-check:checked').forEach(chk => {
+    const id = chk.dataset.id;
+    const hrs = parseFloat(document.querySelector(`.task-hours[data-id="${id}"]`).value) || 0;
+    const prog = document.querySelector(`.task-progress[data-id="${id}"]`).value;
+    if (hrs > 0) progress.push({task_id: parseInt(id), hours: hrs, progress: prog});
+  });
+  document.getElementById('taskModal').classList.remove('open');
+  performClockOut(progress);
+}
+
+function skipAndClockOut() {
+  document.getElementById('taskModal').classList.remove('open');
+  performClockOut([]);
+}
+
+function performClockOut(taskProgress) {
+  const btn = document.getElementById('btnOut');
+  btn.disabled = true;
+  btn.textContent = 'Clocking out…';
+
+  const fd = new FormData();
+  fd.append('action', 'clock_out');
+  if (pendingLat !== null) { fd.append('lat', pendingLat); fd.append('lng', pendingLng); }
+  fd.append('task_progress', JSON.stringify(taskProgress));
+
+  fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+    .then(r => r.json())
+    .then(data => {
+      showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
+      if (data.ok) setTimeout(() => location.reload(), 1800);
+      else { btn.disabled = false; btn.textContent = 'Clock Out'; }
+    })
+    .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; btn.textContent = 'Clock Out'; });
+}
+
+function escHtml(str) {
+  const d = document.createElement('div'); d.textContent = str; return d.innerHTML;
 }
 
 function showToast(msg, color) {
