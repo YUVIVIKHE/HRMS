@@ -1,6 +1,8 @@
 -- ============================================================
---  Payslips — Migration
+--  Payslips — Migration (matches salary structure)
 -- ============================================================
+
+DROP TABLE IF EXISTS `payslips`;
 
 CREATE TABLE IF NOT EXISTS `payslips` (
   `id`                INT UNSIGNED  NOT NULL AUTO_INCREMENT,
@@ -21,11 +23,19 @@ CREATE TABLE IF NOT EXISTS `payslips` (
   `bonus`             DECIMAL(12,2) NOT NULL DEFAULT 0,
   `total_earnings`    DECIMAL(12,2) NOT NULL DEFAULT 0,
   `income_tax`        DECIMAL(12,2) NOT NULL DEFAULT 0,
-  `esi`               DECIMAL(12,2) NOT NULL DEFAULT 0,
-  `pf`                DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `professional_tax`  DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `epf_employee`      DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `esi_employee`      DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `eps_employer`      DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `edli_employer`     DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `epf_admin`         DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `esi_employer`      DECIMAL(12,2) NOT NULL DEFAULT 0,
   `custom_deductions` JSON          NULL,
+  `custom_additions`  JSON          NULL,
   `total_deductions`  DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `total_employer_cost` DECIMAL(12,2) NOT NULL DEFAULT 0,
   `net_payable`       DECIMAL(12,2) NOT NULL DEFAULT 0,
+  `days_payable`      DECIMAL(5,1)  NOT NULL DEFAULT 0,
   `generated_by`      INT UNSIGNED  NULL,
   `created_at`        TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

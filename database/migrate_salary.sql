@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS `salary_structures` (
   `esi_employer_rate`     DECIMAL(5,2)  NOT NULL DEFAULT 3.25 COMMENT 'ESI Employer %',
   `tax_regime`            ENUM('old','new') NOT NULL DEFAULT 'new',
   `custom_deductions`     JSON          NULL COMMENT 'Array of {name, amount}',
+  `custom_additions`      JSON          NULL COMMENT 'Array of {name, amount} - other additions',
   `created_at`            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

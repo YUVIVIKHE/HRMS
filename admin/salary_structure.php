@@ -47,6 +47,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
         }
     }
 
+    $customAddPost = [];
+    if (!empty($_POST['custom_add_name'])) {
+        foreach ($_POST['custom_add_name'] as $i => $name) {
+            $name = trim($name); $amt = (float)($_POST['custom_add_amount'][$i] ?? 0);
+            if ($name && $amt > 0) $customAddPost[] = ['name' => $name, 'amount' => $amt];
+        }
+    }
+
     try {
         if ($salary) {
             $db->prepare("UPDATE salary_structures SET
@@ -54,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 education_allowance=?, lta=?, mediclaim_insurance=?, medical_reimbursement=?,
                 mobile_internet=?, personal_allowance=?, bonus=?, income_tax_annual=?,
                 professional_tax=?, epf_employee_rate=?, eps_employer_rate=?, edli_employer_rate=?,
-                epf_admin_rate=?, esi_employee_rate=?, esi_employer_rate=?, tax_regime=?, custom_deductions=?
+                epf_admin_rate=?, esi_employee_rate=?, esi_employer_rate=?, tax_regime=?, custom_deductions=?, custom_additions=?
                 WHERE id=?")->execute([
                 $gross, $basic, $hra,
                 (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
@@ -66,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
                 (float)($_POST['esi_employee_rate'] ?? 0.75), (float)($_POST['esi_employer_rate'] ?? 3.25),
                 in_array($_POST['tax_regime']??'',['old','new']) ? $_POST['tax_regime'] : 'new',
-                json_encode($customDedPost),
+                json_encode($customDedPost), json_encode($customAddPost),
                 $salary['id']
             ]);
         } else {
@@ -75,8 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 education_allowance, lta, mediclaim_insurance, medical_reimbursement,
                 mobile_internet, personal_allowance, bonus, income_tax_annual,
                 professional_tax, epf_employee_rate, eps_employer_rate, edli_employer_rate,
-                epf_admin_rate, esi_employee_rate, esi_employer_rate, tax_regime, custom_deductions)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
+                epf_admin_rate, esi_employee_rate, esi_employer_rate, tax_regime, custom_deductions, custom_additions)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
                 $userId, $emp['id'], $gross, $basic, $hra,
                 (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
                 (float)($_POST['education_allowance'] ?? 0), (float)($_POST['lta'] ?? 0),
@@ -87,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
                 (float)($_POST['esi_employee_rate'] ?? 0.75), (float)($_POST['esi_employer_rate'] ?? 3.25),
                 in_array($_POST['tax_regime']??'',['old','new']) ? $_POST['tax_regime'] : 'new',
-                json_encode($customDedPost)
+                json_encode($customDedPost), json_encode($customAddPost)
             ]);
         }
         $_SESSION['flash_success'] = "Salary structure saved.";
@@ -103,6 +111,7 @@ $monthly = $gross / 12;
 $basic = round($monthly / 2, 2);
 $hra = round($basic / 2, 2);
 $customDed = json_decode($s['custom_deductions'] ?? '[]', true) ?: [];
+$customAdd = json_decode($s['custom_additions'] ?? '[]', true) ?: [];
 $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
 ?>
 <!DOCTYPE html>
@@ -149,6 +158,8 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
     <!-- VIEW MODE -->
     <?php
       $totalEarnings = $s['basic_salary'] + $s['hra'] + $s['special_allowance'] + $s['conveyance'] + $s['education_allowance'] + $s['lta'] + $s['mediclaim_insurance'] + $s['medical_reimbursement'] + $s['mobile_internet'] + $s['personal_allowance'];
+      $customAddTotal = 0; foreach ($customAdd as $ca) $customAddTotal += (float)$ca['amount'];
+      $totalEarnings += $customAddTotal;
       $monthlyIT = round($s['income_tax_annual'] / 12, 2);
       $monthlyPT = round(2500 / 12, 2);
       $monthlyEPF = round(($s['basic_salary'] * $s['epf_employee_rate']) / 100, 2);
@@ -188,6 +199,9 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
           <tr><td style="padding:7px 0;color:var(--muted);">Mobile & Internet</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['mobile_internet'],0) ?></td></tr>
           <tr><td style="padding:7px 0;color:var(--muted);">Personal Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['personal_allowance'],0) ?></td></tr>
           <tr><td style="padding:7px 0;color:var(--muted);">Bonus (Dec only)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['bonus'],0) ?></td></tr>
+          <?php foreach($customAdd as $ca): ?>
+          <tr><td style="padding:7px 0;color:var(--muted);"><?= htmlspecialchars($ca['name']) ?></td><td style="text-align:right;font-weight:700;color:var(--green-text);">₹<?= number_format($ca['amount'],0) ?></td></tr>
+          <?php endforeach; ?>
           <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;">Total Earnings</td><td style="text-align:right;font-weight:800;color:var(--green-text);">₹<?= number_format($totalEarnings,0) ?></td></tr>
         </table></div>
       </div>
@@ -254,6 +268,24 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
             <div class="form-group" style="margin-bottom:10px;"><label>Mobile & Internet</label><input type="number" name="mobile_internet" class="form-control" value="<?= $s['mobile_internet'] ?? 0 ?>" min="0"></div>
             <div class="form-group" style="margin-bottom:10px;"><label>Personal Allowance</label><input type="number" name="personal_allowance" class="form-control" value="<?= $s['personal_allowance'] ?? 0 ?>" min="0"></div>
             <div class="form-group" style="margin-bottom:10px;"><label>Bonus (Yearly - Dec)</label><input type="number" name="bonus" class="form-control" value="<?= $s['bonus'] ?? 0 ?>" min="0"></div>
+            <!-- Custom Additions -->
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <label style="font-weight:700;font-size:13px;">Other Additions (Monthly)</label>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="addCAdd()">+ Add</button>
+              </div>
+              <div id="cAddList">
+                <?php foreach($customAdd as $ca): ?>
+                <div class="form-grid" style="margin-bottom:8px;grid-template-columns:1fr auto;">
+                  <input type="text" name="custom_add_name[]" class="form-control" value="<?= htmlspecialchars($ca['name']) ?>" placeholder="Name" style="font-size:12.5px;">
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <input type="number" name="custom_add_amount[]" class="form-control" value="<?= $ca['amount'] ?>" placeholder="₹" min="0" style="font-size:12.5px;width:100px;">
+                    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;" onclick="this.parentElement.parentElement.remove()">✕</button>
+                  </div>
+                </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
           </div>
         </div>
         <!-- Deductions -->
@@ -334,6 +366,10 @@ function calcAuto() {
 function addCDed(){
   const list=document.getElementById('cDedList');
   list.innerHTML+=`<div class="form-grid" style="margin-bottom:8px;grid-template-columns:1fr auto;"><input type="text" name="custom_ded_name[]" class="form-control" placeholder="Name" style="font-size:12.5px;"><div style="display:flex;gap:6px;align-items:center;"><input type="number" name="custom_ded_amount[]" class="form-control" placeholder="₹" min="0" style="font-size:12.5px;width:100px;"><button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;" onclick="this.parentElement.parentElement.remove()">✕</button></div></div>`;
+}
+function addCAdd(){
+  const list=document.getElementById('cAddList');
+  list.innerHTML+=`<div class="form-grid" style="margin-bottom:8px;grid-template-columns:1fr auto;"><input type="text" name="custom_add_name[]" class="form-control" placeholder="Name" style="font-size:12.5px;"><div style="display:flex;gap:6px;align-items:center;"><input type="number" name="custom_add_amount[]" class="form-control" placeholder="₹" min="0" style="font-size:12.5px;width:100px;"><button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;" onclick="this.parentElement.parentElement.remove()">✕</button></div></div>`;
 }
 calcAuto();
 </script>

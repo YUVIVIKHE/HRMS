@@ -16,30 +16,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'generat
     $gMonth = (int)$_POST['gen_month'];
     $gYear  = (int)$_POST['gen_year'];
 
-    $salaries = $db->query("
-        SELECT ss.*, u.id AS uid FROM salary_structures ss JOIN users u ON ss.user_id = u.id
-    ")->fetchAll();
+    $salaries = $db->query("SELECT ss.*, u.id AS uid FROM salary_structures ss JOIN users u ON ss.user_id = u.id")->fetchAll();
 
     $count = 0;
-    $stmt = $db->prepare("INSERT IGNORE INTO payslips (user_id, month, year, gross_salary, basic_salary, hra, special_allowance, conveyance, education_allowance, lta, mediclaim_insurance, medical_reimbursement, mobile_internet, personal_allowance, bonus, total_earnings, income_tax, esi, pf, custom_deductions, total_deductions, net_payable, generated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    $stmt = $db->prepare("INSERT IGNORE INTO payslips (user_id, month, year, gross_salary, basic_salary, hra, special_allowance, conveyance, education_allowance, lta, mediclaim_insurance, medical_reimbursement, mobile_internet, personal_allowance, bonus, total_earnings, income_tax, professional_tax, epf_employee, esi_employee, eps_employer, edli_employer, epf_admin, esi_employer, custom_deductions, custom_additions, total_deductions, total_employer_cost, net_payable, days_payable, generated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
     foreach ($salaries as $s) {
         $basic = (float)$s['basic_salary'];
         $totalEarnings = $basic + (float)$s['hra'] + (float)$s['special_allowance'] + (float)$s['conveyance'] + (float)$s['education_allowance'] + (float)$s['lta'] + (float)$s['mediclaim_insurance'] + (float)$s['medical_reimbursement'] + (float)$s['mobile_internet'] + (float)$s['personal_allowance'];
 
+        // Custom additions
+        $customAdds = json_decode($s['custom_additions'] ?? '[]', true) ?: [];
+        $customAddTotal = 0;
+        foreach ($customAdds as $ca) $customAddTotal += (float)$ca['amount'];
+        $totalEarnings += $customAddTotal;
+
         $bonus = ($gMonth === 12) ? (float)$s['bonus'] : 0;
         $totalEarnings += $bonus;
 
-        $monthlyTax = round((float)$s['professional_tax'] / 12, 2);
-        $esi = round(($basic * (float)$s['esi_rate']) / 100, 2);
-        $pf = round(($basic * (float)$s['pf_rate']) / 100, 2);
+        $monthlyIT = round((float)$s['income_tax_annual'] / 12, 2);
+        $monthlyPT = round(2500 / 12, 2);
+        $epfEmp = round(($basic * (float)$s['epf_employee_rate']) / 100, 2);
+        $esiEmp = round(($basic * (float)$s['esi_employee_rate']) / 100, 2);
+
+        $epsEmployer = round(($basic * (float)$s['eps_employer_rate']) / 100, 2);
+        $edliEmployer = round(($basic * (float)$s['edli_employer_rate']) / 100, 2);
+        $epfAdmin = round(($basic * (float)$s['epf_admin_rate']) / 100, 2);
+        $esiEmployer = round(($basic * (float)$s['esi_employer_rate']) / 100, 2);
 
         $customDeds = json_decode($s['custom_deductions'] ?? '[]', true) ?: [];
         $customTotal = 0;
         foreach ($customDeds as $cd) $customTotal += (float)$cd['amount'];
 
-        $totalDeductions = $monthlyTax + $esi + $pf + $customTotal;
-        $netPayable = $totalEarnings - $totalDeductions;
+        $totalDeductions = $monthlyIT + $monthlyPT + $epfEmp + $esiEmp + $customTotal;
+        $totalEmployerCost = $epsEmployer + $edliEmployer + $epfAdmin + $esiEmployer;
+        $netPayable = $totalEarnings - $totalDeductions - $totalEmployerCost;
+
+        // Days payable (working days in month excluding Sundays)
+        $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $gMonth, $gYear);
+        $workDays = 0;
+        for ($d = 1; $d <= $daysInMonth; $d++) {
+            $dow = date('N', mktime(0,0,0,$gMonth,$d,$gYear));
+            if ($dow < 7) $workDays++; // Mon-Sat
+        }
 
         try {
             $stmt->execute([
@@ -48,8 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'generat
                 (float)$s['special_allowance'], (float)$s['conveyance'], (float)$s['education_allowance'],
                 (float)$s['lta'], (float)$s['mediclaim_insurance'], (float)$s['medical_reimbursement'],
                 (float)$s['mobile_internet'], (float)$s['personal_allowance'], $bonus,
-                $totalEarnings, $monthlyTax, $esi, $pf,
-                json_encode($customDeds), $totalDeductions, $netPayable,
+                $totalEarnings, $monthlyIT, $monthlyPT, $epfEmp, $esiEmp,
+                $epsEmployer, $edliEmployer, $epfAdmin, $esiEmployer,
+                json_encode($customDeds), json_encode($customAdds),
+                $totalDeductions, $totalEmployerCost, $netPayable, $workDays,
                 $_SESSION['user_id']
             ]);
             $count++;
