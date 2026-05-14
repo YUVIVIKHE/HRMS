@@ -99,7 +99,7 @@ $withoutSalary = $totalEmps - $withSalary;
         <?php if($search): ?><a href="payroll.php" class="btn btn-ghost btn-sm">Clear</a><?php endif; ?>
       </form>
       <!-- Export -->
-      <form method="GET" action="export_payroll.php" style="display:flex;gap:8px;align-items:center;">
+      <form method="POST" action="export_payroll.php" id="exportForm" style="display:flex;gap:8px;align-items:center;">
         <select name="month_from" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
           <?php for($m=1;$m<=12;$m++): ?>
             <option value="<?= $m ?>" <?= $m==(int)date('n')?'selected':'' ?>><?= date('M',mktime(0,0,0,$m,1)) ?></option>
@@ -116,7 +116,8 @@ $withoutSalary = $totalEmps - $withSalary;
             <option value="<?= $y ?>" <?= $y==(int)date('Y')?'selected':'' ?>><?= $y ?></option>
           <?php endfor; ?>
         </select>
-        <button type="submit" class="btn btn-sm" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7f3d0;font-weight:700;">
+        <input type="hidden" name="user_ids" id="exportUserIds" value="">
+        <button type="submit" class="btn btn-sm" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7f3d0;font-weight:700;" onclick="setExportIds()">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export Excel
         </button>
@@ -131,6 +132,7 @@ $withoutSalary = $totalEmps - $withSalary;
       <table>
         <thead>
           <tr>
+            <th style="width:36px;"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" style="width:16px;height:16px;accent-color:var(--brand);"></th>
             <th>Employee</th>
             <th>Department</th>
             <th>Designation</th>
@@ -142,9 +144,10 @@ $withoutSalary = $totalEmps - $withSalary;
         </thead>
         <tbody>
           <?php if(empty($employees)): ?>
-            <tr class="empty-row"><td colspan="7">No employees found.</td></tr>
+            <tr class="empty-row"><td colspan="8">No employees found.</td></tr>
           <?php else: foreach($employees as $emp): ?>
           <tr>
+            <td><input type="checkbox" class="emp-chk" value="<?= $emp['user_id'] ?>" style="width:16px;height:16px;accent-color:var(--brand);"></td>
             <td>
               <div class="td-user">
                 <div class="td-avatar"><?= strtoupper(substr($emp['full_name'],0,1)) ?></div>
@@ -193,5 +196,16 @@ $withoutSalary = $totalEmps - $withSalary;
   </div>
 </div>
 </div>
+
+<script>
+function toggleAll(master) {
+  document.querySelectorAll('.emp-chk').forEach(c => c.checked = master.checked);
+}
+function setExportIds() {
+  const checked = document.querySelectorAll('.emp-chk:checked');
+  const ids = Array.from(checked).map(c => c.value);
+  document.getElementById('exportUserIds').value = ids.join(',');
+}
+</script>
 </body>
 </html>
