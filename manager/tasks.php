@@ -120,10 +120,6 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
 <style>
-.proj-pill { display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;text-decoration:none;border:1.5px solid var(--border);color:var(--muted);transition:all .15s;white-space:nowrap; }
-.proj-pill:hover { border-color:var(--brand);color:var(--brand);background:var(--brand-light); }
-.proj-pill.active { border-color:var(--brand);color:var(--brand);background:var(--brand-light); }
-.proj-pill .dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
 .prog-bar { height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:5px; }
 .prog-fill { height:100%;border-radius:3px;background:var(--green);transition:width .3s; }
 </style>
