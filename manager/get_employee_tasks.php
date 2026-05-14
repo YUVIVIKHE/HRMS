@@ -21,10 +21,10 @@ $endOfMonth   = date('Y-m-t', strtotime($startOfMonth));
 // ── Holidays (admin-added) ───────────────────────────────────
 $holidays = [];
 try {
-    $hStmt = $db->prepare("SELECT holiday_date, name FROM holidays WHERE holiday_date BETWEEN ? AND ?");
+    $hStmt = $db->prepare("SELECT holiday_date, title FROM holidays WHERE holiday_date BETWEEN ? AND ?");
     $hStmt->execute([$startOfMonth, $endOfMonth]);
     foreach ($hStmt->fetchAll(PDO::FETCH_ASSOC) as $h) {
-        $holidays[$h['holiday_date']] = $h['name'];
+        $holidays[$h['holiday_date']] = $h['title'];
     }
 } catch (Exception $e) {}
 
@@ -32,16 +32,16 @@ try {
 $leaves = [];
 try {
     $lStmt = $db->prepare("
-        SELECT la.start_date, la.end_date, lt.name AS leave_type
+        SELECT la.from_date, la.to_date, lt.name AS leave_type
         FROM leave_applications la
         LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
         WHERE la.user_id = ? AND la.status = 'approved'
-          AND la.start_date <= ? AND la.end_date >= ?
+          AND la.from_date <= ? AND la.to_date >= ?
     ");
     $lStmt->execute([$empId, $endOfMonth, $startOfMonth]);
     foreach ($lStmt->fetchAll(PDO::FETCH_ASSOC) as $l) {
-        $d = new DateTime(max($startOfMonth, $l['start_date']));
-        $e = new DateTime(min($endOfMonth, $l['end_date']));
+        $d = new DateTime(max($startOfMonth, $l['from_date']));
+        $e = new DateTime(min($endOfMonth, $l['to_date']));
         while ($d <= $e) {
             $leaves[$d->format('Y-m-d')] = $l['leave_type'] ?? 'Leave';
             $d->modify('+1 day');

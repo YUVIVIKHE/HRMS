@@ -77,11 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
 
         $lvs = [];
         try {
-            $lStmt = $db->prepare("SELECT start_date, end_date FROM leave_applications WHERE user_id=? AND status='approved' AND start_date<=? AND end_date>=?");
+            $lStmt = $db->prepare("SELECT from_date, to_date FROM leave_applications WHERE user_id=? AND status='approved' AND from_date<=? AND to_date>=?");
             $lStmt->execute([$assignedTo, $toDate, $fromDate]);
             foreach ($lStmt->fetchAll() as $lv) {
-                $ld = new DateTime(max($fromDate, $lv['start_date']));
-                $le = new DateTime(min($toDate, $lv['end_date']));
+                $ld = new DateTime(max($fromDate, $lv['from_date']));
+                $le = new DateTime(min($toDate, $lv['to_date']));
                 while ($ld <= $le) { $lvs[$ld->format('Y-m-d')] = 1; $ld->modify('+1 day'); }
             }
         } catch (Exception $e) {}
