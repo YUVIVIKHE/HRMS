@@ -151,14 +151,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ── Personal email uniqueness check (exclude current employee) ──
         $personalEmail = strtolower(trim($_POST['personal_email'] ?? ''));
         if ($personalEmail) {
-            $dupPE = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=? AND id!=?");
-            $dupPE->execute([$personalEmail, $id]);
-            if ($dupPE->fetch()) {
-                $_SESSION['flash_error'] = "Personal email '$personalEmail' is already registered to another employee.";
+            // Rule 1: personal email must not be the same as THIS employee's own work email
+            if ($personalEmail === $newEmail) {
+                $_SESSION['flash_error'] = "Personal email cannot be the same as the work email. Please use a different email address.";
                 header("Location: edit_employee.php?id=$id"); exit;
             }
-            if ($personalEmail === $newEmail) {
-                $_SESSION['flash_error'] = "Personal email must be different from the work email.";
+            // Rule 2: personal email must not be used as work email by ANY other employee
+            $dupWorkEmail = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=? AND id!=?");
+            $dupWorkEmail->execute([$personalEmail, $id]);
+            if ($dupWorkEmail->fetch()) {
+                $_SESSION['flash_error'] = "The email '$personalEmail' is already in use as a work email by another employee.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+            // Rule 3: personal email must not be used as personal email by ANY other employee
+            $dupPersonalEmail = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=? AND id!=?");
+            $dupPersonalEmail->execute([$personalEmail, $id]);
+            if ($dupPersonalEmail->fetch()) {
+                $_SESSION['flash_error'] = "The email '$personalEmail' is already registered as a personal email by another employee.";
                 header("Location: edit_employee.php?id=$id"); exit;
             }
         }
