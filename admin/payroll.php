@@ -88,15 +88,40 @@ $withoutSalary = $totalEmps - $withSalary;
       </div>
     </div>
 
-    <!-- Search -->
-    <form method="GET" style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
-      <div class="search-box" style="min-width:240px;flex:0 1 320px;">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search employee name, ID, email…">
-      </div>
-      <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      <?php if($search): ?><a href="payroll.php" class="btn btn-ghost btn-sm">Clear</a><?php endif; ?>
-    </form>
+    <!-- Search + Export -->
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+      <form method="GET" style="display:flex;gap:10px;align-items:center;flex:1;">
+        <div class="search-box" style="min-width:240px;flex:0 1 320px;">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search employee name, ID, email…">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        <?php if($search): ?><a href="payroll.php" class="btn btn-ghost btn-sm">Clear</a><?php endif; ?>
+      </form>
+      <!-- Export -->
+      <form method="GET" action="export_payroll.php" style="display:flex;gap:8px;align-items:center;">
+        <select name="month_from" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
+          <?php for($m=1;$m<=12;$m++): ?>
+            <option value="<?= $m ?>" <?= $m==(int)date('n')?'selected':'' ?>><?= date('M',mktime(0,0,0,$m,1)) ?></option>
+          <?php endfor; ?>
+        </select>
+        <span style="font-size:12px;color:var(--muted);">to</span>
+        <select name="month_to" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
+          <?php for($m=1;$m<=12;$m++): ?>
+            <option value="<?= $m ?>" <?= $m==(int)date('n')?'selected':'' ?>><?= date('M',mktime(0,0,0,$m,1)) ?></option>
+          <?php endfor; ?>
+        </select>
+        <select name="year" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
+          <?php for($y=(int)date('Y')-1;$y<=(int)date('Y')+1;$y++): ?>
+            <option value="<?= $y ?>" <?= $y==(int)date('Y')?'selected':'' ?>><?= $y ?></option>
+          <?php endfor; ?>
+        </select>
+        <button type="submit" class="btn btn-sm" style="background:var(--green-bg);color:var(--green-text);border:1px solid #a7f3d0;font-weight:700;">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export Excel
+        </button>
+      </form>
+    </div>
 
     <!-- Table -->
     <div class="table-wrap">

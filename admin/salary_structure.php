@@ -155,6 +155,35 @@ else $profTax = round($gross * 0.30, 2);
 
     <?php if(!$isEdit && $salary): ?>
     <!-- VIEW MODE -->
+    <?php
+      // Calculate net payable (monthly)
+      $monthlyGross = (float)$s['gross_salary'] / 12;
+      $totalEarnings = $s['basic_salary'] + $s['hra'] + $s['special_allowance'] + $s['conveyance'] + $s['education_allowance'] + $s['lta'] + $s['mediclaim_insurance'] + $s['medical_reimbursement'] + $s['mobile_internet'] + $s['personal_allowance'];
+      $monthlyProfTax = round($s['professional_tax'] / 12, 2);
+      $monthlyESI = round(($s['basic_salary'] * $s['esi_rate']) / 100, 2);
+      $monthlyPF = round(($s['basic_salary'] * $s['pf_rate']) / 100, 2);
+      $monthlyCustomDed = 0;
+      foreach ($customDed as $cd) $monthlyCustomDed += (float)$cd['amount'];
+      $totalDeductions = $monthlyProfTax + $monthlyESI + $monthlyPF + $monthlyCustomDed;
+      $netPayable = $totalEarnings - $totalDeductions;
+    ?>
+
+    <!-- Net Payable Summary -->
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-body"><div class="stat-value" style="color:var(--brand);">₹<?= number_format($monthlyGross,0) ?></div><div class="stat-label">Monthly CTC</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-body"><div class="stat-value" style="color:var(--green-text);">₹<?= number_format($totalEarnings,0) ?></div><div class="stat-label">Total Earnings</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-body"><div class="stat-value" style="color:var(--red);">₹<?= number_format($totalDeductions,0) ?></div><div class="stat-label">Total Deductions</div></div>
+      </div>
+      <div class="stat-card" style="border-color:var(--brand);background:var(--brand-light);">
+        <div class="stat-body"><div class="stat-value" style="color:var(--brand);font-size:22px;">₹<?= number_format($netPayable,0) ?></div><div class="stat-label" style="font-weight:700;">Net Payable</div></div>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <!-- Earnings -->
       <div class="card">
@@ -173,21 +202,24 @@ else $profTax = round($gross * 0.30, 2);
             <tr><td style="padding:8px 0;color:var(--muted);">Mobile & Internet</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['mobile_internet'],0) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Personal Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['personal_allowance'],0) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Bonus (Yearly - Dec)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['bonus'],0) ?></td></tr>
+            <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;color:var(--text);">Total Earnings</td><td style="text-align:right;font-weight:800;color:var(--green-text);font-size:14px;">₹<?= number_format($totalEarnings,0) ?></td></tr>
           </table>
         </div>
       </div>
       <!-- Deductions -->
       <div class="card">
-        <div class="card-header"><h2>Deductions</h2></div>
+        <div class="card-header"><h2>Deductions (Monthly)</h2></div>
         <div class="card-body">
           <table style="width:100%;font-size:13px;">
-            <tr><td style="padding:8px 0;color:var(--muted);">Professional Tax (Annual)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($s['professional_tax'],0) ?></td></tr>
+            <tr><td style="padding:8px 0;color:var(--muted);">Professional Tax</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyProfTax,0) ?></td></tr>
             <tr><td style="padding:8px 0;color:var(--muted);">Tax Regime</td><td style="text-align:right;font-weight:700;"><?= ucfirst($s['tax_regime']) ?></td></tr>
-            <tr><td style="padding:8px 0;color:var(--muted);">Employee ESI Rate</td><td style="text-align:right;font-weight:700;"><?= $s['esi_rate'] ?>%</td></tr>
-            <tr><td style="padding:8px 0;color:var(--muted);">Employee PF Rate</td><td style="text-align:right;font-weight:700;"><?= $s['pf_rate'] ?>%</td></tr>
+            <tr><td style="padding:8px 0;color:var(--muted);">Employee ESI (<?= $s['esi_rate'] ?>%)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyESI,0) ?></td></tr>
+            <tr><td style="padding:8px 0;color:var(--muted);">Employee PF (<?= $s['pf_rate'] ?>%)</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($monthlyPF,0) ?></td></tr>
             <?php foreach($customDed as $cd): ?>
             <tr><td style="padding:8px 0;color:var(--muted);"><?= htmlspecialchars($cd['name']) ?></td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($cd['amount'],0) ?></td></tr>
             <?php endforeach; ?>
+            <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;color:var(--text);">Total Deductions</td><td style="text-align:right;font-weight:800;color:var(--red);font-size:14px;">₹<?= number_format($totalDeductions,0) ?></td></tr>
+            <tr style="background:var(--brand-light);border-radius:8px;"><td style="padding:12px 8px;font-weight:800;color:var(--brand);font-size:14px;">NET PAYABLE</td><td style="text-align:right;font-weight:800;color:var(--brand);font-size:16px;">₹<?= number_format($netPayable,0) ?></td></tr>
           </table>
         </div>
       </div>
