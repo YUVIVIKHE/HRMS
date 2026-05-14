@@ -34,7 +34,18 @@ foreach ($logs as $l) {
     ];
 }
 $totalOTHrs = round($totalOTSeconds / 3600, 2);
-$aclDays = round($totalOTHrs / 9, 2);
+
+// Get approved ACL requests for this month
+$approvedACL = $db->prepare("
+    SELECT work_date, hours FROM acl_requests
+    WHERE user_id = ? AND status = 'approved' AND DATE_FORMAT(work_date,'%Y-%m') = ?
+");
+$approvedACL->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth)]);
+$approvedACL = $approvedACL->fetchAll();
+$aclFromRequests = array_sum(array_column($approvedACL, 'hours'));
+
+$totalACLHrs = $totalOTHrs + $aclFromRequests;
+$aclDays = round($totalACLHrs / 9, 2);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -85,11 +96,11 @@ $aclDays = round($totalOTHrs / 9, 2);
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--green-bg);color:var(--green);"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-        <div class="stat-body"><div class="stat-value"><?= $totalOTHrs ?></div><div class="stat-label">Total OT Hours</div></div>
+        <div class="stat-body"><div class="stat-value"><?= $totalOTHrs ?></div><div class="stat-label">OT Hours</div><?php if($aclFromRequests > 0): ?><div class="stat-sub">+ <?= $aclFromRequests ?> hrs (approved requests)</div><?php endif; ?></div>
       </div>
       <div class="stat-card" style="border-color:var(--brand);background:var(--brand-light);">
         <div class="stat-icon" style="background:var(--brand);color:#fff;"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-        <div class="stat-body"><div class="stat-value" style="color:var(--brand);"><?= $aclDays ?></div><div class="stat-label">ACL Earned</div><div class="stat-sub">Compensatory leave days</div></div>
+        <div class="stat-body"><div class="stat-value" style="color:var(--brand);"><?= $aclDays ?></div><div class="stat-label">ACL Earned</div><div class="stat-sub"><?= $totalACLHrs ?> hrs total ÷ 9</div></div>
       </div>
     </div>
 
