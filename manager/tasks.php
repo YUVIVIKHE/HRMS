@@ -29,6 +29,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 $filterProject = (int)($_GET['project_id'] ?? 0);
 $filterMember  = (int)($_GET['member_id'] ?? 0);
 $search        = trim($_GET['q'] ?? '');
+$filterDateFrom = trim($_GET['date_from'] ?? '');
+$filterDateTo   = trim($_GET['date_to'] ?? '');
+$filterPeriod   = $_GET['period'] ?? 'today'; // today, past, future, all, custom
 
 // My projects
 $myProjects = $db->prepare("
@@ -48,7 +51,7 @@ if ($deptId) {
     $tm->execute([$deptId,$uid]); $teamMembers = $tm->fetchAll();
 }
 
-// ── Build query — default: today's tasks across all projects ─
+// ── Build query ──────────────────────────────────────────────
 $where  = ['ta.assigned_by=?'];
 $params = [$uid];
 
@@ -56,12 +59,21 @@ if ($filterProject) { $where[] = "ta.project_id=?"; $params[] = $filterProject; 
 if ($filterMember)  { $where[] = "ta.assigned_to=?"; $params[] = $filterMember; }
 if ($search)        { $where[] = "(ta.subtask LIKE ? OR u.name LIKE ?)"; $params[] = "%$search%"; $params[] = "%$search%"; }
 
-// If no filters applied, show only today's active tasks
-if (!$filterProject && !$filterMember && !$search) {
+// Date filtering
+if ($filterPeriod === 'today') {
     $where[] = "ta.from_date <= ? AND ta.to_date >= ?";
+    $params[] = $today; $params[] = $today;
+} elseif ($filterPeriod === 'future') {
+    $where[] = "ta.from_date > ?";
     $params[] = $today;
+} elseif ($filterPeriod === 'past') {
+    $where[] = "ta.to_date < ?";
     $params[] = $today;
+} elseif ($filterPeriod === 'custom' && $filterDateFrom && $filterDateTo) {
+    $where[] = "ta.from_date <= ? AND ta.to_date >= ?";
+    $params[] = $filterDateTo; $params[] = $filterDateFrom;
 }
+// 'all' = no date filter
 
 $tasks = $db->prepare("
     SELECT ta.*, u.name AS emp_name, u.email AS emp_email,
@@ -100,7 +112,10 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">Tasks</span>
-      <span class="page-breadcrumb"><?= (!$filterProject && !$filterMember && !$search) ? "Today's Tasks" : 'Filtered Results' ?></span>
+      <span class="page-breadcrumb"><?php
+        $labels = ['today'=>"Today's Tasks",'future'=>'Future Tasks','past'=>'Past Tasks','all'=>'All Tasks','custom'=>'Custom Range'];
+        echo $labels[$filterPeriod] ?? "Today's Tasks";
+      ?></span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Manager</span>
@@ -119,10 +134,9 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
     <?php endif; ?>
 
     <!-- Filter + Assign Task row -->
-    <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;">
-      <!-- Filters -->
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
       <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;flex:1;">
-        <select name="project_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:200px;max-width:280px;">
+        <select name="project_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:180px;max-width:250px;">
           <option value="">All Projects</option>
           <?php foreach($myProjects as $proj): ?>
           <option value="<?= $proj['id'] ?>" <?= $filterProject==$proj['id']?'selected':'' ?>>
@@ -130,20 +144,22 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
           </option>
           <?php endforeach; ?>
         </select>
-        <select name="member_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:160px;max-width:220px;">
+        <select name="member_id" class="form-control" style="font-size:13px;padding:9px 14px;min-width:150px;max-width:200px;">
           <option value="">All Members</option>
           <?php foreach($teamMembers as $m): ?>
             <option value="<?= $m['id'] ?>" <?= $filterMember==$m['id']?'selected':'' ?>><?= htmlspecialchars($m['name']) ?></option>
           <?php endforeach; ?>
         </select>
-        <div class="search-box" style="min-width:160px;flex:0 1 200px;">
+        <div class="search-box" style="min-width:140px;flex:0 1 180px;">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search…">
         </div>
+        <input type="hidden" name="period" id="periodInput" value="<?= htmlspecialchars($filterPeriod) ?>">
+        <input type="hidden" name="date_from" id="dateFromInput" value="<?= htmlspecialchars($filterDateFrom) ?>">
+        <input type="hidden" name="date_to" id="dateToInput" value="<?= htmlspecialchars($filterDateTo) ?>">
         <button type="submit" class="btn btn-primary btn-sm">Filter</button>
         <a href="tasks.php" class="btn btn-ghost btn-sm">Reset</a>
       </form>
-      <!-- Assign Task -->
       <?php if(!empty($myProjects)): ?>
       <a href="assign_task.php?project_id=<?= $filterProject ?: $myProjects[0]['id'] ?>" class="btn btn-primary" style="flex-shrink:0;">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -153,7 +169,7 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
     </div>
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -181,6 +197,20 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
           <div class="stat-label">Hrs Worked</div>
         </div>
       </div>
+    </div>
+
+    <!-- Date/Period Filter -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+      <span style="font-size:12px;font-weight:700;color:var(--muted);margin-right:4px;">PERIOD:</span>
+      <?php foreach(['today'=>'Today','future'=>'Future','past'=>'Past','all'=>'All'] as $pk=>$pl): ?>
+        <a href="tasks.php?period=<?= $pk ?>&project_id=<?= $filterProject ?>&member_id=<?= $filterMember ?>&q=<?= urlencode($search) ?>" class="btn btn-sm <?= $filterPeriod===$pk?'btn-primary':'btn-ghost' ?>"><?= $pl ?></a>
+      <?php endforeach; ?>
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <input type="date" id="customFrom" value="<?= htmlspecialchars($filterDateFrom) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
+        <span style="font-size:12px;color:var(--muted);">to</span>
+        <input type="date" id="customTo" value="<?= htmlspecialchars($filterDateTo) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
+        <button type="button" class="btn btn-sm btn-secondary" onclick="applyCustomDate()">Go</button>
+      </span>
     </div>
 
     <!-- Tasks Table -->
@@ -263,5 +293,18 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
   </div>
 </div>
 </div>
+<script>
+function applyCustomDate() {
+  const from = document.getElementById('customFrom').value;
+  const to = document.getElementById('customTo').value;
+  if (!from || !to) { alert('Select both from and to dates.'); return; }
+  if (from > to) { alert('From date must be before To date.'); return; }
+  const params = new URLSearchParams(window.location.search);
+  params.set('period', 'custom');
+  params.set('date_from', from);
+  params.set('date_to', to);
+  window.location.href = 'tasks.php?' + params.toString();
+}
+</script>
 </body>
 </html>
