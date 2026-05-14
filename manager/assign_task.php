@@ -67,20 +67,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     }
 
     if (empty($errors)) {
-        // Budget check
+        // Budget check — exclude Sat, Sun, holidays, leaves
+        $hols = [];
+        try {
+            $hStmt = $db->prepare("SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN ? AND ?");
+            $hStmt->execute([$fromDate, $toDate]);
+            $hols = array_flip($hStmt->fetchAll(PDO::FETCH_COLUMN));
+        } catch (Exception $e) {}
+
+        $lvs = [];
+        try {
+            $lStmt = $db->prepare("SELECT start_date, end_date FROM leave_applications WHERE user_id=? AND status='approved' AND start_date<=? AND end_date>=?");
+            $lStmt->execute([$assignedTo, $toDate, $fromDate]);
+            foreach ($lStmt->fetchAll() as $lv) {
+                $ld = new DateTime(max($fromDate, $lv['start_date']));
+                $le = new DateTime(min($toDate, $lv['end_date']));
+                while ($ld <= $le) { $lvs[$ld->format('Y-m-d')] = 1; $ld->modify('+1 day'); }
+            }
+        } catch (Exception $e) {}
+
         $wDays = 0;
         $d = new DateTime($fromDate); $e = new DateTime($toDate);
-        while ($d <= $e) { if ((int)$d->format('N') !== 7) $wDays++; $d->modify('+1 day'); }
-        $maxHrs = $wDays * 9;
+        while ($d <= $e) {
+            $dow = (int)$d->format('N');
+            $ds = $d->format('Y-m-d');
+            if ($dow < 6 && !isset($hols[$ds]) && !isset($lvs[$ds])) $wDays++;
+            $d->modify('+1 day');
+        }
 
-        $existing = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM task_assignments WHERE assigned_to=? AND from_date<=? AND to_date>=?");
-        $existing->execute([$assignedTo, $toDate, $fromDate]);
-        $alreadyAssigned = (float)$existing->fetchColumn();
+        if ($wDays === 0) {
+            $errors[] = "No working days in selected range (all weekends/holidays/leaves).";
+        } else {
+            $maxHrs = $wDays * 9;
 
-        $newHrs = array_sum(array_column($validTasks, 'hours'));
+            $existing = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM task_assignments WHERE assigned_to=? AND from_date<=? AND to_date>=?");
+            $existing->execute([$assignedTo, $toDate, $fromDate]);
+            $alreadyAssigned = (float)$existing->fetchColumn();
 
-        if (($alreadyAssigned + $newHrs) > $maxHrs) {
-            $errors[] = "Exceeds budget! Max: {$maxHrs} hrs. Already assigned: " . number_format($alreadyAssigned,1) . " hrs. New: " . number_format($newHrs,1) . " hrs.";
+            $newHrs = array_sum(array_column($validTasks, 'hours'));
+
+            if (($alreadyAssigned + $newHrs) > $maxHrs) {
+                $errors[] = "Exceeds budget! Max: {$maxHrs} hrs ({$wDays} working days). Already assigned: " . number_format($alreadyAssigned,1) . " hrs. New: " . number_format($newHrs,1) . " hrs.";
+            }
         }
     }
 
@@ -347,7 +375,13 @@ function getBudget(){
   const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
   if(!f||!t||f>t) return 0;
   let d=new Date(f),e=new Date(t),n=0;
-  while(d<=e){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}
+  while(d<=e){
+    const dow=d.getDay();
+    const ds=d.toISOString().split('T')[0];
+    // Exclude Sat, Sun, holidays, leaves
+    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) n++;
+    d.setDate(d.getDate()+1);
+  }
   return n*9;
 }
 
@@ -367,33 +401,74 @@ function onDatesChange(){
 function hasBusyDates(){
   const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
   if(!f||!t||f>t) return false;
-  let d=new Date(f),e=new Date(t),busy=[];
+  // Check if there are zero working days
+  let d=new Date(f),e=new Date(t),workDays=0;
   while(d<=e){
-    if(d.getDay()!==0){
-      const ds=d.toISOString().split('T')[0];
-      if(empData[ds]&&empData[ds].total_hrs>=9) busy.push(ds);
-    }
+    const dow=d.getDay();
+    const ds=d.toISOString().split('T')[0];
+    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) workDays++;
     d.setDate(d.getDate()+1);
   }
-  return busy.length>0;
+  return workDays===0;
 }
 
 function checkBusy(){
   const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
   const warn=document.getElementById('busyWarning');
-  if(!f||!t||f>t||!Object.keys(empData).length){warn.style.display='none';return;}
-  let d=new Date(f),e=new Date(t),busy=[];
+  if(!f||!t||f>t){warn.style.display='none';return;}
+
+  let busyDates=[], reasons=[];
+  let d=new Date(f),e=new Date(t);
   while(d<=e){
-    if(d.getDay()!==0){
-      const ds=d.toISOString().split('T')[0];
-      if(empData[ds]&&empData[ds].total_hrs>=9) busy.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
+    const dow=d.getDay(); // 0=Sun,6=Sat
+    const ds=d.toISOString().split('T')[0];
+
+    if(dow===0||dow===6){
+      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
+      reasons.push(dow===6?'Sat':'Sun');
+    } else if(empHolidays[ds]){
+      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Holiday)');
+    } else if(empLeaves[ds]){
+      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Leave)');
+    } else if(empData[ds]&&empData[ds].total_hrs>=9){
+      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Full 9h)');
     }
     d.setDate(d.getDate()+1);
   }
-  if(busy.length){
+
+  // Check if ALL days in range are blocked
+  let workingDaysInRange=0;
+  d=new Date(f); e=new Date(t);
+  while(d<=e){
+    const dow=d.getDay();
+    const ds=d.toISOString().split('T')[0];
+    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) workingDaysInRange++;
+    d.setDate(d.getDate()+1);
+  }
+
+  // Only show warning for holidays/leaves/full days (weekends are expected)
+  let blockingDates=[];
+  d=new Date(f); e=new Date(t);
+  while(d<=e){
+    const dow=d.getDay();
+    const ds=d.toISOString().split('T')[0];
+    if(dow!==0&&dow!==6){
+      if(empHolidays[ds]) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' 🎉 '+empHolidays[ds]);
+      else if(empLeaves[ds]) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' 🏖 '+empLeaves[ds]);
+      else if(empData[ds]&&empData[ds].total_hrs>=9) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Full)');
+    }
+    d.setDate(d.getDate()+1);
+  }
+
+  if(workingDaysInRange===0){
+    warn.innerHTML='⚠ No working days in selected range (all weekends/holidays/leaves).';
     warn.style.display='block';
-    warn.innerHTML='⚠ Employee is fully booked (9 hrs) on: <strong>'+busy.join(', ')+'</strong>. Choose different dates.';
     document.getElementById('btnSubmit').disabled=true;
+  } else if(blockingDates.length>0){
+    warn.innerHTML='⚠ Blocked dates: <strong>'+blockingDates.join(', ')+'</strong>. Hours will be distributed only on available working days.';
+    warn.style.display='block';
+    // Don't disable — just warn. Budget recalculates based on actual working days.
+    reCalc();
   } else {
     warn.style.display='none';
     reCalc();
@@ -417,8 +492,15 @@ function loadCal(){
   const emp=document.getElementById('empSelect').value;
   if(!emp) return;
   fetch('get_employee_tasks.php?employee_id='+emp+'&month='+calMonth+'&year='+calYear)
-    .then(r=>r.json()).then(data=>{empData=data;renderCal();checkBusy();}).catch(()=>{empData={};renderCal();});
+    .then(r=>r.json()).then(data=>{
+      empData=data.days||{};
+      empHolidays=data.holidays||{};
+      empLeaves=data.leaves||{};
+      renderCal();checkBusy();
+    }).catch(()=>{empData={};empHolidays={};empLeaves={};renderCal();});
 }
+
+let empHolidays={}, empLeaves={};
 
 function renderCal(){
   document.getElementById('calPlaceholder').style.display='none';
@@ -433,22 +515,38 @@ function renderCal(){
   for(let i=1;i<sd;i++) g.innerHTML+='<div class="dc empty"></div>';
   for(let d=1;d<=dim;d++){
     const ds=calYear+'-'+String(calMonth).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    const dow=new Date(calYear,calMonth-1,d).getDay();
-    const isSun=dow===0;
+    const dow=new Date(calYear,calMonth-1,d).getDay(); // 0=Sun,6=Sat
+    const isSat=dow===6, isSun=dow===0;
+    const isHoliday=empHolidays[ds]||false;
+    const isLeave=empLeaves[ds]||false;
     const dd=empData[ds];
     const hrs=dd?dd.total_hrs:0;
+
     let cls='dc';
-    if(isSun) cls+=' sun';
-    else if(hrs>=9) cls+=' full';
-    else if(hrs>0) cls+=' booked';
     let html='<div class="dn">'+d+'</div>';
-    if(isSun){ html+='<div style="font-size:8px;color:var(--muted);">Off</div>'; }
-    else if(hrs>0){
-      const hc=hrs>=9?'r':(hrs>=5?'y':'g');
+
+    if(isSat||isSun){
+      cls+=' sun';
+      html+='<div style="font-size:8px;color:#ef4444;font-weight:600;">'+(isSat?'Sat':'Sun')+'</div>';
+    } else if(isHoliday){
+      cls+=' sun';
+      html+='<div style="font-size:8px;color:#d97706;font-weight:600;">🎉 '+esc(String(isHoliday).substring(0,8))+'</div>';
+    } else if(isLeave){
+      cls+=' sun';
+      html+='<div style="font-size:8px;color:#7c3aed;font-weight:600;">🏖 '+esc(String(isLeave).substring(0,8))+'</div>';
+    } else if(hrs>=9){
+      cls+=' full';
+      html+='<span class="cal-hrs r">'+hrs.toFixed(1)+'h</span>';
+      if(dd.tasks&&dd.tasks.length) html+='<div class="cal-task">'+esc(dd.tasks[0].subtask.substring(0,10))+'</div>';
+    } else if(hrs>0){
+      cls+=' booked';
+      const hc=hrs>=5?'y':'g';
       html+='<span class="cal-hrs '+hc+'">'+hrs.toFixed(1)+'h</span>';
       if(dd.tasks&&dd.tasks.length) html+='<div class="cal-task">'+esc(dd.tasks[0].subtask.substring(0,10))+'</div>';
     }
-    g.innerHTML+='<div class="'+cls+'" title="'+ds+(hrs?' — '+hrs.toFixed(1)+'h assigned':'')+'">'+html+'</div>';
+
+    const title=ds+(isSat||isSun?' — Weekend':isHoliday?' — Holiday: '+isHoliday:isLeave?' — Leave: '+isLeave:hrs?' — '+hrs.toFixed(1)+'h assigned':'');
+    g.innerHTML+='<div class="'+cls+'" title="'+esc(title)+'">'+html+'</div>';
   }
 }
 
