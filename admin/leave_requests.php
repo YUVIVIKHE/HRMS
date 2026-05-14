@@ -67,6 +67,7 @@ $requests = $db->prepare("
            lb.balance AS remaining_balance
     FROM leave_applications la
     JOIN users u ON la.user_id = u.id
+    INNER JOIN employees e ON e.email = u.email
     JOIN leave_types lt ON la.leave_type_id = lt.id
     LEFT JOIN users mgr ON u.manager_id = mgr.id
     LEFT JOIN leave_balances lb ON lb.user_id=la.user_id AND lb.leave_type_id=la.leave_type_id
@@ -79,7 +80,7 @@ $requests = $requests->fetchAll();
 // Counts — same base condition as main query
 $counts = [];
 foreach (['pending','approved','rejected','cancelled'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id WHERE (u.role='manager' OR la.escalated=1) AND la.status=?");
+    $c = $db->prepare("SELECT COUNT(*) FROM leave_applications la JOIN users u ON la.user_id=u.id INNER JOIN employees e ON e.email=u.email WHERE (u.role='manager' OR la.escalated=1) AND la.status=?");
     $c->execute([$s]); $counts[$s] = (int)$c->fetchColumn();
 }
 $escalatedCount = (int)$db->query("SELECT COUNT(*) FROM leave_applications WHERE escalated=1 AND status='pending'")->fetchColumn();

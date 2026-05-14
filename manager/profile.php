@@ -22,7 +22,7 @@ if ($user) {
 }
 
 // Team size
-$teamSize = (int)$db->query("SELECT COUNT(*) FROM users WHERE manager_id=$uid AND role='employee'")->fetchColumn();
+$teamSize = (int)$db->query("SELECT COUNT(*) FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee'")->fetchColumn();
 
 $firstName = explode(' ', $_SESSION['user_name'])[0];
 

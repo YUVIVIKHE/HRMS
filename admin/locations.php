@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Data ─────────────────────────────────────────────────────
 $locations = $db->query("SELECT * FROM attendance_locations ORDER BY is_remote ASC, name ASC")->fetchAll();
-$users     = $db->query("SELECT id, name, email, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+$users     = $db->query("SELECT u.id, u.name, u.email, u.role FROM users u INNER JOIN employees e ON e.email = u.email WHERE u.role IN ('employee','manager') AND u.status='active' ORDER BY u.name")->fetchAll();
 
 // Build user→locations map
 $userLocMap = [];

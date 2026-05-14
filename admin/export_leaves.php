@@ -13,7 +13,7 @@ $users = $db->query("
     SELECT u.id, u.name, u.email, u.role,
            e.employee_id, e.job_title, d.name AS department
     FROM users u
-    LEFT JOIN employees e ON e.email = u.email
+    INNER JOIN employees e ON e.email = u.email
     LEFT JOIN departments d ON d.id = e.department_id
     WHERE u.role IN ('employee','manager') AND u.status = 'active'
     ORDER BY u.name

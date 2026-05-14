@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Data ─────────────────────────────────────────────────────
-$managers   = $db->query("SELECT id, name FROM users WHERE role='manager' AND status='active' ORDER BY name")->fetchAll();
+$managers   = $db->query("SELECT u.id, u.name FROM users u INNER JOIN employees e ON e.email = u.email WHERE u.role='manager' AND u.status='active' ORDER BY u.name")->fetchAll();
 $nextCode   = $project ? $project['project_code'] : generateProjectCode($db);
 $isEdit     = (bool)$project;
 $pageTitle  = $isEdit ? 'Edit Project' : 'New Project';

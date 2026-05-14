@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $type   = $db->prepare("SELECT * FROM leave_types WHERE id=?");
         $type->execute([$typeId]); $type = $type->fetch();
         if ($type) {
-            $users = $db->query("SELECT id FROM users WHERE role IN ('employee','manager') AND status='active'")->fetchAll();
+            $users = $db->query("SELECT u.id FROM users u INNER JOIN employees e ON e.email = u.email WHERE u.role IN ('employee','manager') AND u.status='active'")->fetchAll();
             $count = 0;
             foreach ($users as $u) {
                 // Upsert balance
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Data ─────────────────────────────────────────────────────
 $leaveTypes = $db->query("SELECT * FROM leave_types ORDER BY name")->fetchAll();
-$users      = $db->query("SELECT id, name, role FROM users WHERE role IN ('employee','manager') AND status='active' ORDER BY name")->fetchAll();
+$users      = $db->query("SELECT u.id, u.name, u.role FROM users u INNER JOIN employees e ON e.email = u.email WHERE u.role IN ('employee','manager') AND u.status='active' ORDER BY u.name")->fetchAll();
 
 // Balance summary per type
 $balSummary = [];

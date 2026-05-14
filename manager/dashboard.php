@@ -12,8 +12,8 @@ $openTasks    = 8;
 $teamLeaves   = [];
 $teamMembers  = [];
 try {
-    $myTeam      = (int)$db->query("SELECT COUNT(*) FROM users WHERE manager_id=$uid AND role='employee'")->fetchColumn();
-    $teamMembers = $db->query("SELECT id, name, email, status FROM users WHERE manager_id=$uid AND role='employee' LIMIT 8")->fetchAll();
+    $myTeam      = (int)$db->query("SELECT COUNT(*) FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee'")->fetchColumn();
+    $teamMembers = $db->query("SELECT u.id, u.name, u.email, u.status FROM users u INNER JOIN employees e ON e.email=u.email WHERE u.manager_id=$uid AND u.role='employee' LIMIT 8")->fetchAll();
 } catch(Exception $e) {}
 $firstName = explode(' ', $_SESSION['user_name'])[0];
 

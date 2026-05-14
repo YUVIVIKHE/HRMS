@@ -66,6 +66,7 @@ $regs = $db->prepare("
            mgr.name AS manager_name
     FROM attendance_regularizations ar
     JOIN users u ON ar.user_id = u.id
+    INNER JOIN employees e ON e.email = u.email
     LEFT JOIN users mgr ON u.manager_id = mgr.id
     WHERE " . implode(' AND ', $where) . "
     ORDER BY ar.escalated DESC, ar.created_at ASC
@@ -75,7 +76,7 @@ $regs = $regs->fetchAll();
 
 $counts = [];
 foreach (['pending','approved','rejected'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM attendance_regularizations ar JOIN users u ON ar.user_id=u.id WHERE (u.role='manager' OR ar.escalated=1) AND ar.status=?");
+    $c = $db->prepare("SELECT COUNT(*) FROM attendance_regularizations ar JOIN users u ON ar.user_id=u.id INNER JOIN employees e ON e.email=u.email WHERE (u.role='manager' OR ar.escalated=1) AND ar.status=?");
     $c->execute([$s]); $counts[$s] = (int)$c->fetchColumn();
 }
 $escalatedCount = (int)$db->query("SELECT COUNT(*) FROM attendance_regularizations WHERE escalated=1 AND status='pending'")->fetchColumn();
