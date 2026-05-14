@@ -73,6 +73,16 @@
       </a>    </nav>
   </div>
 
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Payroll</div>
+    <nav class="sidebar-nav">
+      <a href="payroll.php" class="<?= in_array($p,['payroll.php','salary_structure.php'])?'active':'' ?>">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Salary Structure
+      </a>
+    </nav>
+  </div>
+
   <div class="sidebar-footer">
     <a href="../auth/logout.php">
       <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
