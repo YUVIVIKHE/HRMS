@@ -186,6 +186,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                ->execute([$updatedEmail, strtolower($currentEmpEmail)]);
         }
 
+        // ── Sync users.name from first_name + last_name ─────────
+        $updatedFirst = trim($_POST['first_name'] ?? '');
+        $updatedLast  = trim($_POST['last_name']  ?? '');
+        if ($updatedFirst || $updatedLast) {
+            $fullName    = trim("$updatedFirst $updatedLast");
+            $syncEmail   = $updatedEmail ?: $currentEmpEmail;
+            if ($fullName && $syncEmail) {
+                $db->prepare("UPDATE users SET name=? WHERE LOWER(email)=?")
+                   ->execute([$fullName, strtolower($syncEmail)]);
+            }
+        }
+
         // ── Department change: no users.manager_id to sync (dept-based relationship) ──
         // The employee's department is already updated in the employees table above.
 
