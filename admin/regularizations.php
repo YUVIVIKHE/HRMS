@@ -63,7 +63,7 @@ if ($filterEsc)   { $where[] = "ar.escalated=1"; }
 
 $regs = $db->prepare("
     SELECT ar.*, u.name AS emp_name, u.email AS emp_email, u.role AS emp_role,
-           mgr.name AS manager_name
+           e.direct_manager_name AS manager_name
     FROM attendance_regularizations ar
     JOIN users u ON ar.user_id = u.id
     INNER JOIN employees e ON e.email = u.email
