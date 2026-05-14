@@ -34,7 +34,13 @@ if (!function_exists('fmtHrs')) {
 }
 
 try {
-    $users = $db->query("SELECT id, name, email, role FROM users WHERE role IN ('employee','manager') ORDER BY name")->fetchAll();
+    $users = $db->query("
+        SELECT u.id, u.name, u.email, u.role
+        FROM users u
+        INNER JOIN employees e ON e.email = u.email
+        WHERE u.role IN ('employee','manager') AND u.status = 'active'
+        ORDER BY u.name
+    ")->fetchAll();
 
     // Build query
     $where  = ["al.log_date BETWEEN ? AND ?"];
@@ -46,7 +52,8 @@ try {
         SELECT al.*, u.name AS user_name, u.role AS user_role,
                loc.name AS location_name
         FROM attendance_logs al
-        JOIN users u ON al.user_id = u.id
+        INNER JOIN users u ON al.user_id = u.id
+        INNER JOIN employees e ON e.email = u.email
         LEFT JOIN attendance_locations loc ON al.location_id = loc.id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY al.log_date ASC, u.name ASC

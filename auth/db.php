@@ -38,8 +38,7 @@ function getDB(): PDO {
                 WHERE u1.role = 'employee' AND u2.role = 'manager'
             ");
             // Ensure UNIQUE on email
-            try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}
-            // Ensure UNIQUE on employees.email too
+            try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}            // Ensure UNIQUE on employees.email too
             try { $pdo->exec("ALTER TABLE `employees` ADD UNIQUE KEY `uq_emp_email` (`email`)"); } catch(Exception $e) {}
             // Ensure UNIQUE on employees.personal_email (nullable, so allow multiple NULLs)
             try { $pdo->exec("ALTER TABLE `employees` ADD UNIQUE KEY `uq_emp_personal_email` (`personal_email`)"); } catch(Exception $e) {}
