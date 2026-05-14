@@ -345,57 +345,39 @@ function validateReg() {
   return true;
 }
 
-// Clock in/out
+// Clock in/out — optimized for speed
 let pendingLat = null, pendingLng = null;
 
 function doAction(action) {
-  const btn = document.getElementById(action === 'clock_in' ? 'btnIn' : 'btnOut');
+  const btn = document.getElementById('btnIn');
   btn.disabled = true;
-  btn.textContent = 'Please wait…';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/></svg> Clocking in…';
 
-  const getLocation = () => new Promise(resolve => {
+  // Start location fetch and API call in parallel for speed
+  let lat = null, lng = null;
+  const locationPromise = new Promise(resolve => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
-        () => resolve({lat: null, lng: null}),
-        {timeout: 8000}
+        pos => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve(); },
+        () => resolve(),
+        {enableHighAccuracy: true, timeout: 5000, maximumAge: 0}
       );
-    } else resolve({lat: null, lng: null});
+    } else resolve();
   });
 
-  if (action === 'clock_in') {
-    getLocation().then(({lat, lng}) => {
-      const fd = new FormData();
-      fd.append('action', 'clock_in');
-      if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
-      fetch('../auth/attendance_action.php', {method:'POST', body:fd})
-        .then(r => r.json())
-        .then(data => {
-          showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
-          if (data.ok) setTimeout(() => location.reload(), 1800);
-          else { btn.disabled = false; btn.textContent = 'Clock In'; }
-        })
-        .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; });
-    });
-  } else {
-    // Clock out — first fetch tasks, then show modal
-    getLocation().then(({lat, lng}) => {
-      pendingLat = lat; pendingLng = lng;
-      const fd = new FormData();
-      fd.append('action', 'get_tasks');
-      fetch('../auth/attendance_action.php', {method:'POST', body:fd})
-        .then(r => r.json())
-        .then(data => {
-          if (data.ok && data.tasks && data.tasks.length > 0) {
-            showTaskModal(data.tasks, data.work_hours);
-          } else {
-            // No active tasks, clock out directly
-            performClockOut([]);
-          }
-        })
-        .catch(() => { performClockOut([]); });
-    });
-  }
+  locationPromise.then(() => {
+    const fd = new FormData();
+    fd.append('action', 'clock_in');
+    if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
+    fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+      .then(r => r.json())
+      .then(data => {
+        showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
+        if (data.ok) setTimeout(() => location.reload(), 1000);
+        else { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> Clock In'; }
+      })
+      .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; btn.innerHTML = 'Clock In'; });
+  });
 }
 
 function showTaskModal(tasks, workHours) {

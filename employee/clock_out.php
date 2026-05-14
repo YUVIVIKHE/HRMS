@@ -19,36 +19,22 @@ if (!$todayLog || !$todayLog['clock_in'] || $todayLog['clock_out']) {
 $clockInTime = date('h:i A', strtotime($todayLog['clock_in']));
 $workSec = time() - strtotime($todayLog['clock_in']);
 $workHrs = round($workSec / 3600, 1);
+$workHrsH = floor($workSec / 3600);
+$workHrsM = floor(($workSec % 3600) / 60);
 
-// Get projects with active tasks for this employee
-$projects = $db->prepare("
-    SELECT DISTINCT p.id, p.project_name, p.project_code
+// Get all active tasks for today (across all projects)
+$allTasks = $db->prepare("
+    SELECT ta.id, ta.subtask, ta.hours AS assigned_hours, ta.project_id, ta.status,
+           p.project_name, p.project_code,
+           COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl WHERE tpl.task_id = ta.id), 0) AS utilized_hours
     FROM task_assignments ta
     JOIN projects p ON ta.project_id = p.id
     WHERE ta.assigned_to = ? AND ta.status != 'Completed'
       AND ta.from_date <= ? AND ta.to_date >= ?
-    ORDER BY p.project_name
-");
-$projects->execute([$uid, $today, $today]);
-$projects = $projects->fetchAll();
-
-// Get all active tasks grouped by project
-$allTasks = $db->prepare("
-    SELECT ta.id, ta.subtask, ta.hours AS assigned_hours, ta.project_id, ta.status,
-           COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl WHERE tpl.task_id = ta.id), 0) AS utilized_hours
-    FROM task_assignments ta
-    WHERE ta.assigned_to = ? AND ta.status != 'Completed'
-      AND ta.from_date <= ? AND ta.to_date >= ?
-    ORDER BY ta.subtask
+    ORDER BY p.project_name, ta.subtask
 ");
 $allTasks->execute([$uid, $today, $today]);
 $allTasks = $allTasks->fetchAll();
-
-// Group tasks by project
-$tasksByProject = [];
-foreach ($allTasks as $t) {
-    $tasksByProject[$t['project_id']][] = $t;
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -59,21 +45,21 @@ foreach ($allTasks as $t) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
 <style>
-.clockout-page { max-width:700px; margin:0 auto; padding:32px 20px; }
-.clockout-header { text-align:center; margin-bottom:28px; }
-.clockout-header h1 { font-size:22px; font-weight:800; color:var(--text); margin-bottom:6px; }
-.clockout-header p { font-size:13.5px; color:var(--muted); }
-.time-badge { display:inline-flex; align-items:center; gap:6px; background:var(--brand-light); color:var(--brand); padding:8px 16px; border-radius:20px; font-size:13px; font-weight:700; margin-top:10px; }
-.task-entry { background:var(--surface); border:1.5px solid var(--border); border-radius:10px; padding:16px; margin-bottom:12px; transition:border-color .15s; }
-.task-entry.selected { border-color:var(--brand); background:var(--brand-light); }
-.task-entry-header { display:flex; align-items:center; gap:10px; cursor:pointer; }
-.task-entry-header input[type="checkbox"] { width:18px; height:18px; accent-color:var(--brand); cursor:pointer; }
-.task-entry-body { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); display:none; }
-.task-entry.selected .task-entry-body { display:block; }
-.hrs-input { width:90px; font-size:14px; font-weight:700; text-align:center; padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; background:var(--surface); }
-.hrs-input:focus { border-color:var(--brand); outline:none; box-shadow:0 0 0 3px var(--brand-light); }
-.progress-select { font-size:13px; padding:8px 12px; border:1.5px solid var(--border); border-radius:8px; background:var(--surface); }
-.summary-bar { position:sticky; bottom:0; background:var(--surface); border-top:1px solid var(--border); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; border-radius:12px; box-shadow:0 -4px 20px rgba(0,0,0,.06); margin-top:24px; }
+.co-page{max-width:640px;margin:0 auto;padding:24px 16px;}
+.co-banner{background:linear-gradient(135deg,var(--brand),var(--brand-mid));border-radius:12px;padding:20px 24px;color:#fff;text-align:center;margin-bottom:24px;}
+.co-banner h1{font-size:20px;font-weight:800;margin:0 0 4px;}
+.co-banner .time{font-size:28px;font-weight:800;letter-spacing:-1px;margin:8px 0;}
+.co-banner .meta{font-size:13px;opacity:.85;}
+.task-item{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;transition:all .15s;}
+.task-item.active{border-color:var(--brand);background:var(--brand-light);}
+.task-item label{display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+.task-item input[type="checkbox"]{width:18px;height:18px;accent-color:var(--brand);margin-top:2px;flex-shrink:0;}
+.task-item .hrs-row{display:flex;gap:12px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:none;}
+.task-item.active .hrs-row{display:flex;}
+.hrs-field{width:80px;font-size:14px;font-weight:700;text-align:center;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:#fff;}
+.hrs-field:focus{border-color:var(--brand);outline:none;box-shadow:0 0 0 3px var(--brand-light);}
+.co-footer{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:16px;border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.05);margin-top:20px;display:flex;align-items:center;justify-content:space-between;}
+.hr-warn{font-size:12px;color:var(--red);font-weight:600;margin-top:4px;display:none;}
 </style>
 </head>
 <body>
@@ -84,7 +70,7 @@ foreach ($allTasks as $t) {
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">Clock Out</span>
-      <span class="page-breadcrumb">Log your task progress</span>
+      <span class="page-breadcrumb">Log task progress</span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Employee</span>
@@ -94,93 +80,81 @@ foreach ($allTasks as $t) {
   </header>
 
   <div class="page-body">
-    <div class="clockout-page">
+    <div class="co-page">
 
-      <div class="clockout-header">
-        <h1>Log Task Progress & Clock Out</h1>
-        <p>Select the project and tasks you worked on today, enter hours, then clock out.</p>
-        <div class="time-badge">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Clocked in at <?= $clockInTime ?> · ~<?= $workHrs ?> hrs worked today
+      <!-- Banner -->
+      <div class="co-banner">
+        <h1>Clock Out</h1>
+        <div class="time" id="liveTime">--:--:--</div>
+        <div class="meta">
+          Clocked in at <?= $clockInTime ?> · Worked: <strong><?= $workHrsH ?>h <?= $workHrsM ?>m</strong> (~<?= $workHrs ?> hrs)
         </div>
       </div>
 
-      <?php if(empty($projects)): ?>
-        <div class="card"><div class="card-body" style="text-align:center;padding:40px 20px;">
+      <?php if(empty($allTasks)): ?>
+        <div class="card"><div class="card-body" style="text-align:center;padding:32px 20px;">
           <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No active tasks for today</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">You can clock out directly without logging task progress.</div>
-          <button class="btn btn-primary" onclick="clockOutDirect()">Clock Out Now</button>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Clock out directly.</div>
+          <button class="btn btn-primary" id="btnDirect" onclick="clockOut([])">Clock Out Now</button>
           <a href="attendance.php" class="btn btn-secondary" style="margin-left:8px;">Cancel</a>
         </div></div>
       <?php else: ?>
 
-      <!-- Project Selection -->
-      <div class="form-group" style="margin-bottom:20px;">
-        <label style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;display:block;">Select Project</label>
-        <select id="projectSelect" class="form-control" style="font-size:14px;padding:10px 14px;max-width:400px;" onchange="filterTasks()">
-          <option value="">— Choose a project —</option>
-          <?php foreach($projects as $p): ?>
-            <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)</option>
-          <?php endforeach; ?>
-        </select>
+      <!-- Instructions -->
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--brand)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Select tasks you worked on, enter hours (max <?= $workHrs ?> hrs total). Per-task max = remaining hrs for that task.
       </div>
 
-      <!-- Tasks List -->
-      <div id="tasksContainer" style="display:none;">
-        <label style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:block;">Select Tasks & Enter Hours</label>
-
-        <?php foreach($projects as $p): ?>
-        <div class="project-tasks" data-project="<?= $p['id'] ?>" style="display:none;">
-          <?php if(!empty($tasksByProject[$p['id']])): ?>
-            <?php foreach($tasksByProject[$p['id']] as $t):
-              $remaining = max(0, round($t['assigned_hours'] - $t['utilized_hours'], 1));
-            ?>
-            <div class="task-entry" id="task-<?= $t['id'] ?>">
-              <div class="task-entry-header" onclick="toggleTask(<?= $t['id'] ?>)">
-                <input type="checkbox" id="chk-<?= $t['id'] ?>" data-id="<?= $t['id'] ?>" onchange="toggleTask(<?= $t['id'] ?>)" onclick="event.stopPropagation()">
-                <div style="flex:1;">
-                  <div style="font-size:14px;font-weight:700;color:var(--text);"><?= htmlspecialchars($t['subtask']) ?></div>
-                  <div style="font-size:12px;color:var(--muted);margin-top:2px;">
-                    Assigned: <?= number_format($t['assigned_hours'],1) ?> hrs · Done: <?= number_format($t['utilized_hours'],1) ?> hrs · Remaining: <?= $remaining ?> hrs
-                  </div>
-                </div>
+      <!-- Task List -->
+      <div id="taskList">
+        <?php foreach($allTasks as $t):
+          $remaining = max(0, round((float)$t['assigned_hours'] - (float)$t['utilized_hours'], 1));
+          $maxPerTask = min($remaining, $workHrs);
+        ?>
+        <div class="task-item" id="ti-<?= $t['id'] ?>">
+          <label>
+            <input type="checkbox" data-id="<?= $t['id'] ?>" onchange="toggleItem(this)">
+            <div style="flex:1;">
+              <div style="font-size:14px;font-weight:700;color:var(--text);"><?= htmlspecialchars($t['subtask']) ?></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+                <?= htmlspecialchars($t['project_code']) ?> · <?= htmlspecialchars($t['project_name']) ?>
               </div>
-              <div class="task-entry-body">
-                <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
-                  <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Hours Worked Today</label>
-                    <input type="number" class="hrs-input" id="hrs-<?= $t['id'] ?>" data-id="<?= $t['id'] ?>" min="0.5" max="<?= $workHrs ?>" step="0.5" placeholder="0" oninput="updateTotal()">
-                  </div>
-                  <div>
-                    <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">Progress</label>
-                    <select class="progress-select" id="prog-<?= $t['id'] ?>" data-id="<?= $t['id'] ?>">
-                      <option value="In Progress">In Progress</option>
-                      <option value="Completed">Completed</option>
-                      <option value="On Hold">On Hold</option>
-                    </select>
-                  </div>
-                </div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">
+                Assigned: <?= number_format($t['assigned_hours'],1) ?>h · Done: <?= number_format($t['utilized_hours'],1) ?>h · <span style="color:var(--brand);font-weight:600;">Remaining: <?= $remaining ?>h</span>
               </div>
             </div>
-            <?php endforeach; ?>
-          <?php else: ?>
-            <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">No active tasks in this project for today.</div>
-          <?php endif; ?>
+          </label>
+          <div class="hrs-row">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px;">Hours today</label>
+              <input type="number" class="hrs-field" id="hrs-<?= $t['id'] ?>" data-id="<?= $t['id'] ?>" data-max="<?= $maxPerTask ?>" min="0.5" max="<?= $maxPerTask ?>" step="0.5" placeholder="0" oninput="validateHrs(this)">
+              <div class="hr-warn" id="warn-<?= $t['id'] ?>"></div>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px;">Progress</label>
+              <select class="form-control" id="prog-<?= $t['id'] ?>" style="font-size:12px;padding:8px 10px;">
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="On Hold">On Hold</option>
+              </select>
+            </div>
+          </div>
         </div>
         <?php endforeach; ?>
       </div>
 
-      <!-- Summary & Action -->
-      <div class="summary-bar" id="summaryBar">
+      <!-- Footer -->
+      <div class="co-footer">
         <div>
-          <div style="font-size:13px;color:var(--muted);">Total hours logged: <strong id="totalLogged" style="color:var(--brand);font-size:15px;">0.0</strong></div>
+          <div style="font-size:13px;color:var(--muted);">
+            Logged: <strong id="totalLogged" style="color:var(--brand);font-size:16px;">0.0</strong> / <?= $workHrs ?> hrs max
+          </div>
+          <div id="totalWarn" style="display:none;font-size:12px;color:var(--red);font-weight:600;margin-top:2px;"></div>
         </div>
-        <div style="display:flex;gap:10px;">
-          <a href="attendance.php" class="btn btn-secondary">Cancel</a>
-          <button class="btn btn-primary" id="btnClockOut" onclick="submitClockOut()">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            Clock Out & Save
-          </button>
+        <div style="display:flex;gap:8px;">
+          <a href="attendance.php" class="btn btn-secondary btn-sm">Cancel</a>
+          <button class="btn btn-primary" id="btnClockOut" onclick="submitClockOut()">Clock Out & Save</button>
         </div>
       </div>
 
@@ -193,56 +167,82 @@ foreach ($allTasks as $t) {
 <div id="toast" style="position:fixed;bottom:28px;right:28px;background:#111827;color:#fff;padding:14px 20px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.15);display:none;z-index:999;max-width:360px;"></div>
 
 <script>
-function filterTasks() {
-  const pid = document.getElementById('projectSelect').value;
-  const container = document.getElementById('tasksContainer');
-  document.querySelectorAll('.project-tasks').forEach(el => el.style.display = 'none');
-  if (pid) {
-    container.style.display = 'block';
-    const target = document.querySelector(`.project-tasks[data-project="${pid}"]`);
-    if (target) target.style.display = 'block';
+const MAX_WORK_HRS = <?= $workHrs ?>;
+
+// Live time
+function tick(){const n=new Date();document.getElementById('liveTime').textContent=n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+tick();setInterval(tick,1000);
+
+function toggleItem(chk) {
+  const id = chk.dataset.id;
+  const item = document.getElementById('ti-' + id);
+  item.classList.toggle('active', chk.checked);
+  if (!chk.checked) { document.getElementById('hrs-' + id).value = ''; }
+  recalcTotal();
+}
+
+function validateHrs(inp) {
+  const id = inp.dataset.id;
+  const max = parseFloat(inp.dataset.max);
+  const val = parseFloat(inp.value) || 0;
+  const warn = document.getElementById('warn-' + id);
+
+  if (val > max) {
+    warn.textContent = 'Max ' + max + 'h remaining for this task';
+    warn.style.display = 'block';
+    inp.style.borderColor = 'var(--red)';
   } else {
-    container.style.display = 'none';
+    warn.style.display = 'none';
+    inp.style.borderColor = '';
   }
+  recalcTotal();
 }
 
-function toggleTask(id) {
-  const chk = document.getElementById('chk-' + id);
-  const entry = document.getElementById('task-' + id);
-  // If triggered from the header click (not checkbox itself), toggle checkbox
-  if (event && event.target !== chk) chk.checked = !chk.checked;
-  entry.classList.toggle('selected', chk.checked);
-  if (!chk.checked) {
-    document.getElementById('hrs-' + id).value = '';
-  }
-  updateTotal();
-}
-
-function updateTotal() {
+function recalcTotal() {
   let total = 0;
-  document.querySelectorAll('.hrs-input').forEach(inp => {
-    total += parseFloat(inp.value) || 0;
+  let hasError = false;
+  document.querySelectorAll('.hrs-field').forEach(inp => {
+    const val = parseFloat(inp.value) || 0;
+    const max = parseFloat(inp.dataset.max);
+    total += val;
+    if (val > max) hasError = true;
   });
+
   document.getElementById('totalLogged').textContent = total.toFixed(1);
+  const totalWarn = document.getElementById('totalWarn');
+  const btn = document.getElementById('btnClockOut');
+
+  if (total > MAX_WORK_HRS) {
+    totalWarn.textContent = '⚠ Total ' + total.toFixed(1) + ' hrs exceeds your worked time of ' + MAX_WORK_HRS + ' hrs!';
+    totalWarn.style.display = 'block';
+    btn.disabled = true;
+  } else if (hasError) {
+    totalWarn.textContent = '⚠ Some tasks exceed their remaining hours limit.';
+    totalWarn.style.display = 'block';
+    btn.disabled = true;
+  } else {
+    totalWarn.style.display = 'none';
+    btn.disabled = false;
+  }
 }
 
 function submitClockOut() {
-  const btn = document.getElementById('btnClockOut');
-  btn.disabled = true;
-  btn.textContent = 'Clocking out…';
-
-  // Gather task progress
   const progress = [];
-  document.querySelectorAll('input[type="checkbox"]:checked').forEach(chk => {
+  document.querySelectorAll('.task-item.active').forEach(item => {
+    const chk = item.querySelector('input[type="checkbox"]');
     const id = chk.dataset.id;
-    if (!id) return;
-    const hrs = parseFloat(document.getElementById('hrs-' + id)?.value) || 0;
-    const prog = document.getElementById('prog-' + id)?.value || 'In Progress';
+    const hrs = parseFloat(document.getElementById('hrs-' + id).value) || 0;
+    const prog = document.getElementById('prog-' + id).value;
     if (hrs > 0) progress.push({task_id: parseInt(id), hours: hrs, progress: prog});
   });
+  clockOut(progress);
+}
 
-  // Get location then clock out
-  const doClockOut = (lat, lng) => {
+function clockOut(progress) {
+  const btn = document.getElementById('btnClockOut') || document.getElementById('btnDirect');
+  if (btn) { btn.disabled = true; btn.textContent = 'Clocking out…'; }
+
+  const doIt = (lat, lng) => {
     const fd = new FormData();
     fd.append('action', 'clock_out');
     if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
@@ -252,56 +252,25 @@ function submitClockOut() {
       .then(r => r.json())
       .then(data => {
         showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
-        if (data.ok) setTimeout(() => location.href = 'attendance.php', 1500);
-        else { btn.disabled = false; btn.textContent = 'Clock Out & Save'; }
+        if (data.ok) setTimeout(() => location.href = 'attendance.php', 1000);
+        else if (btn) { btn.disabled = false; btn.textContent = 'Clock Out & Save'; }
       })
-      .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; btn.textContent = 'Clock Out & Save'; });
+      .catch(() => { showToast('Network error.', '#ef4444'); if(btn){btn.disabled=false;btn.textContent='Clock Out & Save';} });
   };
 
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
-      pos => doClockOut(pos.coords.latitude, pos.coords.longitude),
-      () => doClockOut(null, null),
-      {timeout: 8000}
+      pos => doIt(pos.coords.latitude, pos.coords.longitude),
+      () => doIt(null, null),
+      {enableHighAccuracy: true, timeout: 5000, maximumAge: 0}
     );
-  } else {
-    doClockOut(null, null);
-  }
-}
-
-function clockOutDirect() {
-  const doClockOut = (lat, lng) => {
-    const fd = new FormData();
-    fd.append('action', 'clock_out');
-    if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
-    fd.append('task_progress', '[]');
-
-    fetch('../auth/attendance_action.php', {method:'POST', body:fd})
-      .then(r => r.json())
-      .then(data => {
-        showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
-        if (data.ok) setTimeout(() => location.href = 'attendance.php', 1500);
-      })
-      .catch(() => showToast('Network error.', '#ef4444'));
-  };
-
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      pos => doClockOut(pos.coords.latitude, pos.coords.longitude),
-      () => doClockOut(null, null),
-      {timeout: 8000}
-    );
-  } else {
-    doClockOut(null, null);
-  }
+  } else doIt(null, null);
 }
 
 function showToast(msg, color) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.background = color || '#111827';
-  t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 4000);
+  t.textContent = msg; t.style.background = color || '#111827';
+  t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 4000);
 }
 </script>
 </body>
