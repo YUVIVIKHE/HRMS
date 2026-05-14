@@ -229,8 +229,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
                     <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
                   <?php endforeach; ?>
                 </select>
+                <input type="number" id="pickerHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="addFromPicker()">+ Add</button>
-                <button type="button" class="btn btn-ghost btn-sm" onclick="addCustom()">+ Custom</button>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                <input type="text" id="customName" class="form-control" placeholder="Custom task name" style="max-width:300px;font-size:12.5px;">
+                <input type="number" id="customHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="addCustom()">+ Add Custom</button>
               </div>
 
               <div id="taskList"></div>
@@ -299,24 +304,42 @@ let taskIdx = 0, calMonth = new Date().getMonth()+1, calYear = new Date().getFul
 
 // ── Task rows ────────────────────────────────────────────────
 function addRow(name, hrs) {
+  if(!name){alert('Enter a task name.');return;}
+  if(!hrs||hrs<=0){alert('Enter hours for this task.');return;}
   const i = taskIdx++;
   const el = document.createElement('div');
   el.className = 'task-row'; el.id = 'tr-'+i;
-  el.innerHTML = `<div style="flex:1"><input type="text" name="tasks[${i}][subtask]" class="form-control" value="${esc(name)}" placeholder="Task name" required style="font-size:12.5px;font-weight:600;"></div>
-    <div style="width:80px"><input type="number" name="tasks[${i}][hours]" class="form-control thr" min="0.5" step="0.5" value="${hrs||''}" placeholder="Hrs" required style="font-size:12.5px;font-weight:700;text-align:center;" oninput="reCalc()"></div>
-    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;" onclick="document.getElementById('tr-${i}').remove();reCalc()">✕</button>`;
+  el.innerHTML = `<div style="flex:1;font-size:12.5px;font-weight:600;color:var(--text);">${esc(name)}</div>
+    <div style="font-size:13px;font-weight:800;color:var(--brand);min-width:50px;text-align:center;">${parseFloat(hrs).toFixed(1)}h</div>
+    <input type="hidden" name="tasks[${i}][subtask]" value="${esc(name)}">
+    <input type="hidden" name="tasks[${i}][hours]" value="${hrs}">
+    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;font-size:11px;" onclick="document.getElementById('tr-${i}').remove();reCalc()">✕</button>`;
   document.getElementById('taskList').appendChild(el);
   reCalc();
 }
-function addFromPicker(){ const s=document.getElementById('subtaskPicker'); if(!s.value){alert('Pick a subtask.');return;} addRow(s.value,''); s.value=''; }
-function addCustom(){ addRow('',''); }
+function addFromPicker(){
+  const s=document.getElementById('subtaskPicker');
+  const h=document.getElementById('pickerHrs');
+  if(!s.value){alert('Pick a subtask first.');return;}
+  if(!h.value||parseFloat(h.value)<=0){alert('Enter hours for this task.');return;}
+  addRow(s.value, parseFloat(h.value));
+  s.value=''; h.value='';
+}
+function addCustom(){
+  const n=document.getElementById('customName');
+  const h=document.getElementById('customHrs');
+  if(!n.value.trim()){alert('Enter a task name.');return;}
+  if(!h.value||parseFloat(h.value)<=0){alert('Enter hours for this task.');return;}
+  addRow(n.value.trim(), parseFloat(h.value));
+  n.value=''; h.value='';
+}
 
 function reCalc(){
-  let t=0; document.querySelectorAll('.thr').forEach(i=>{t+=parseFloat(i.value)||0;});
+  let t=0; document.querySelectorAll('input[name$="[hours]"]').forEach(i=>{t+=parseFloat(i.value)||0;});
   document.getElementById('totalHrs').textContent=t.toFixed(1);
   const max=getBudget();
   const warn=document.getElementById('overWarning');
-  if(max>0 && t>max){ warn.style.display='block'; warn.textContent='⚠ Total '+t.toFixed(1)+' hrs exceeds budget of '+max+' hrs. Reduce hours.'; document.getElementById('btnSubmit').disabled=true; }
+  if(max>0 && t>max){ warn.style.display='block'; warn.textContent='⚠ Total '+t.toFixed(1)+' hrs exceeds budget of '+max+' hrs. Remove tasks to proceed.'; document.getElementById('btnSubmit').disabled=true; }
   else{ warn.style.display='none'; if(!hasBusyDates()) document.getElementById('btnSubmit').disabled=false; }
 }
 
