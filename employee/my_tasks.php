@@ -4,13 +4,29 @@ require_once __DIR__ . '/../auth/db.php';
 guardRole('employee');
 $db  = getDB();
 $uid = $_SESSION['user_id'];
+$today = date('Y-m-d');
 
 // ── Filters ──────────────────────────────────────────────────
-$filterProject = (int)($_GET['project_id'] ?? 0);
+$filterProject  = (int)($_GET['project_id'] ?? 0);
+$filterDate     = trim($_GET['date'] ?? $today);
+$filterDateFrom = trim($_GET['date_from'] ?? '');
+$filterDateTo   = trim($_GET['date_to'] ?? '');
+$filterMode     = $_GET['mode'] ?? 'day'; // day, range, all
 
 $where  = ["ta.assigned_to = ?"];
 $params = [$uid];
 if ($filterProject) { $where[] = "ta.project_id=?"; $params[] = $filterProject; }
+
+if ($filterMode === 'day') {
+    $where[] = "ta.from_date <= ? AND ta.to_date >= ?";
+    $params[] = $filterDate;
+    $params[] = $filterDate;
+} elseif ($filterMode === 'range' && $filterDateFrom && $filterDateTo) {
+    $where[] = "ta.from_date <= ? AND ta.to_date >= ?";
+    $params[] = $filterDateTo;
+    $params[] = $filterDateFrom;
+}
+// 'all' = no date filter
 
 $tasks = $db->prepare("
     SELECT ta.*, p.project_name, p.project_code, p.deadline_date AS proj_deadline,
@@ -63,7 +79,11 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">My Tasks</span>
-      <span class="page-breadcrumb">Tasks assigned to you</span>
+      <span class="page-breadcrumb"><?php
+        if ($filterMode === 'day') echo date('d M Y', strtotime($filterDate)) . ($filterDate === $today ? " (Today)" : "");
+        elseif ($filterMode === 'range') echo date('d M', strtotime($filterDateFrom)) . ' – ' . date('d M Y', strtotime($filterDateTo));
+        else echo 'All Tasks';
+      ?></span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Employee</span>
@@ -74,15 +94,8 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
 
   <div class="page-body">
 
-    <div class="page-header">
-      <div class="page-header-text">
-        <h1>My Tasks</h1>
-        <p>Tasks assigned to you. Progress is tracked when you clock out.</p>
-      </div>
-    </div>
-
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -112,21 +125,34 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
       </div>
     </div>
 
-    <!-- Info banner -->
-    <div style="background:var(--brand-light);border:1px solid #c7d2fe;border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--brand)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <span style="font-size:13px;color:var(--brand);font-weight:500;">Task progress is updated when you clock out. Select your tasks and log hours worked during checkout.</span>
+    <!-- Filters -->
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+      <!-- Day navigation -->
+      <a href="my_tasks.php?mode=day&date=<?= date('Y-m-d', strtotime($filterDate.' -1 day')) ?>" class="btn btn-ghost btn-sm" style="padding:6px 10px;">←</a>
+      <input type="date" id="dayPicker" value="<?= htmlspecialchars($filterDate) ?>" class="form-control" style="font-size:12.5px;padding:7px 10px;width:auto;font-weight:600;" onchange="location.href='my_tasks.php?mode=day&date='+this.value">
+      <a href="my_tasks.php?mode=day&date=<?= date('Y-m-d', strtotime($filterDate.' +1 day')) ?>" class="btn btn-ghost btn-sm" style="padding:6px 10px;">→</a>
+      <a href="my_tasks.php?mode=day&date=<?= $today ?>" class="btn btn-sm <?= ($filterMode==='day'&&$filterDate===$today)?'btn-primary':'btn-ghost' ?>">Today</a>
+      <a href="my_tasks.php?mode=all" class="btn btn-sm <?= $filterMode==='all'?'btn-primary':'btn-ghost' ?>">All</a>
+
+      <!-- Date range -->
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <input type="date" id="rangeFrom" value="<?= htmlspecialchars($filterDateFrom) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
+        <span style="font-size:12px;color:var(--muted);">to</span>
+        <input type="date" id="rangeTo" value="<?= htmlspecialchars($filterDateTo) ?>" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
+        <button type="button" class="btn btn-sm btn-secondary" onclick="applyRange()">Go</button>
+      </span>
     </div>
 
     <!-- Project filter -->
     <?php if(!empty($myProjects)): ?>
     <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
-      <select class="form-control" style="font-size:13px;padding:7px 12px;min-width:220px;width:auto;" onchange="location.href='my_tasks.php'+(this.value?'?project_id='+this.value:'')">
+      <select class="form-control" style="font-size:13px;padding:7px 12px;min-width:220px;width:auto;" onchange="applyProject(this.value)">
         <option value="">All Projects</option>
         <?php foreach($myProjects as $proj): ?>
           <option value="<?= $proj['id'] ?>" <?= $filterProject==$proj['id']?'selected':'' ?>><?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)</option>
         <?php endforeach; ?>
       </select>
+      <span style="font-size:12.5px;color:var(--muted);"><?= count($tasks) ?> task(s) shown</span>
     </div>
     <?php endif; ?>
 
@@ -134,13 +160,13 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
     <?php if(empty($tasks)): ?>
       <div class="card"><div class="card-body" style="text-align:center;padding:60px 20px;">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--muted-light)" stroke-width="1.5" style="display:block;margin:0 auto 16px;"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No tasks found</div>
-        <div style="font-size:13.5px;color:var(--muted);">Your manager will assign tasks to you here.</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No tasks for <?= $filterMode==='day' ? date('d M Y', strtotime($filterDate)) : 'this period' ?></div>
+        <div style="font-size:13.5px;color:var(--muted);">Try selecting a different date or view all tasks.</div>
       </div></div>
     <?php else: ?>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <?php foreach($tasks as $t):
-        $isOverdue = $t['status']!=='Completed' && $t['to_date'] < date('Y-m-d');
+        $isOverdue = $t['to_date'] < $today;
         $daysLeft  = (int)ceil((strtotime($t['to_date']) - time()) / 86400);
         $utilized  = (float)$t['utilized_hours'];
         $assigned  = (float)$t['hours'];
@@ -159,7 +185,7 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
             <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);">
               <span><?= date('d M', strtotime($t['from_date'])) ?> → <?= date('d M Y', strtotime($t['to_date'])) ?></span>
               <span>Assigned by <?= htmlspecialchars($t['assigned_by_name']) ?></span>
-              <?php if($t['status']!=='Completed' && $daysLeft >= 0): ?>
+              <?php if(!$isOverdue && $daysLeft >= 0): ?>
                 <span style="color:<?= $daysLeft<=2?'var(--red)':($daysLeft<=5?'var(--yellow)':'var(--muted)') ?>;font-weight:600;"><?= $daysLeft ?> day<?= $daysLeft!==1?'s':'' ?> left</span>
               <?php endif; ?>
             </div>
@@ -186,5 +212,20 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
   </div>
 </div>
 </div>
+
+<script>
+function applyRange() {
+  const f = document.getElementById('rangeFrom').value;
+  const t = document.getElementById('rangeTo').value;
+  if (!f || !t) { alert('Select both dates.'); return; }
+  if (f > t) { alert('From must be before To.'); return; }
+  location.href = 'my_tasks.php?mode=range&date_from=' + f + '&date_to=' + t;
+}
+function applyProject(v) {
+  const params = new URLSearchParams(window.location.search);
+  if (v) params.set('project_id', v); else params.delete('project_id');
+  location.href = 'my_tasks.php?' + params.toString();
+}
+</script>
 </body>
 </html>
