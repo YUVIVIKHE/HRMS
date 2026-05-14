@@ -72,6 +72,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     }
 
     if (empty($errors)) {
+        // Calculate budget: working days × 9 hrs
+        $wDays = calcWorkingDays($fromDate, $toDate);
+        $maxHrs = $wDays * 9;
+
+        // Get already assigned hours for this employee in overlapping date range
+        $existing = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM task_assignments WHERE assigned_to=? AND from_date<=? AND to_date>=?");
+        $existing->execute([$assignedTo, $toDate, $fromDate]);
+        $alreadyAssigned = (float)$existing->fetchColumn();
+
+        // Total new hours
+        $newHrs = array_sum(array_column($validTasks, 'hours'));
+
+        if (($alreadyAssigned + $newHrs) > $maxHrs) {
+            $errors[] = "Exceeds budget! Available: " . number_format($maxHrs,1) . " hrs, Already assigned: " . number_format($alreadyAssigned,1) . " hrs, New: " . number_format($newHrs,1) . " hrs. Total would be " . number_format($alreadyAssigned + $newHrs,1) . " hrs.";
+        }
+    }
+
+    if (empty($errors)) {
         $stmt = $db->prepare("INSERT INTO task_assignments (project_id, assigned_to, assigned_by, subtask, from_date, to_date, hours, notes) VALUES (?,?,?,?,?,?,?,?)");
         foreach ($validTasks as $vt) {
             $stmt->execute([$projectId, $assignedTo, $uid, $vt['subtask'], $fromDate, $toDate, $vt['hours'], $notes ?: null]);
@@ -108,6 +126,23 @@ function calcWorkingDays(string $from, string $to): int {
 .task-row{display:flex;gap:10px;align-items:center;margin-bottom:10px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;}
 .task-row .form-control{margin:0;}
 .budget-box{border-radius:8px;padding:12px 16px;margin-bottom:20px;border:1.5px solid #c7d2fe;background:var(--brand-light);font-size:13px;}
+/* Calendar */
+.emp-cal{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);}
+.emp-cal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);}
+.emp-cal-header h3{font-size:14px;font-weight:700;margin:0;color:var(--text);}
+.emp-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);padding:1px;}
+.emp-cal-grid .day-header{background:var(--surface-2);text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding:6px 2px;}
+.emp-cal-grid .day-cell{background:var(--surface);min-height:60px;padding:4px;position:relative;font-size:11px;}
+.emp-cal-grid .day-cell.empty{background:var(--surface-2);}
+.emp-cal-grid .day-cell.sunday{background:#fef2f2;}
+.emp-cal-grid .day-cell .day-num{font-weight:700;color:var(--text);margin-bottom:2px;}
+.emp-cal-grid .day-cell.full{background:#fef3c7;}
+.emp-cal-grid .day-cell.full .day-num{color:#d97706;}
+.day-hrs{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;display:inline-block;margin-top:1px;}
+.day-hrs.ok{background:#d1fae5;color:#059669;}
+.day-hrs.warn{background:#fef3c7;color:#d97706;}
+.day-hrs.full{background:#fee2e2;color:#dc2626;}
+.day-task{font-size:9.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
 </style>
 </head>
 <body>
@@ -195,6 +230,26 @@ function calcWorkingDays(string $from, string $to): int {
         </div>
       </div>
 
+      <!-- Employee Calendar -->
+      <div class="card" style="margin-bottom:20px;" id="calendarCard" style="display:none;">
+        <div class="card-header"><h2>Employee Schedule</h2><p>Highlighted dates show existing task assignments. Red = fully booked (9 hrs).</p></div>
+        <div class="card-body">
+          <div id="calendarPlaceholder" style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">
+            Select an employee to view their schedule.
+          </div>
+          <div id="calendarContainer" style="display:none;">
+            <div class="emp-cal">
+              <div class="emp-cal-header">
+                <button type="button" class="btn btn-ghost btn-sm" onclick="changeCalMonth(-1)">← Prev</button>
+                <h3 id="calMonthLabel"></h3>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="changeCalMonth(1)">Next →</button>
+              </div>
+              <div class="emp-cal-grid" id="calGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tasks Section -->
       <div class="card" style="margin-bottom:20px;">
         <div class="card-header">
@@ -227,6 +282,7 @@ function calcWorkingDays(string $from, string $to): int {
             <span style="font-size:13px;color:var(--muted);">Total Hours:</span>
             <span style="font-size:18px;font-weight:800;color:var(--brand);" id="totalHrs">0.0</span>
           </div>
+          <div id="budgetWarning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-weight:600;color:var(--red);"></div>
 
         </div>
       </div>
@@ -296,6 +352,23 @@ function calcTotal() {
   let total = 0;
   document.querySelectorAll('.task-hrs-input').forEach(inp => { total += parseFloat(inp.value) || 0; });
   document.getElementById('totalHrs').textContent = total.toFixed(1);
+  checkBudgetLimit(total);
+}
+
+function checkBudgetLimit(total) {
+  const from = document.getElementById('fromDate').value;
+  const to = document.getElementById('toDate').value;
+  const warn = document.getElementById('budgetWarning');
+  if (!from || !to || from > to) { if(warn) warn.style.display='none'; return; }
+  const days = workingDays(from, to);
+  const maxHrs = days * 9;
+  if (total > maxHrs) {
+    if(warn) { warn.style.display='block'; warn.textContent='⚠ Total ' + total.toFixed(1) + ' hrs exceeds budget of ' + maxHrs + ' hrs (' + days + ' days × 9 hrs). Reduce hours to proceed.'; }
+    document.getElementById('btnSubmit').disabled = true;
+  } else {
+    if(warn) warn.style.display='none';
+    document.getElementById('btnSubmit').disabled = false;
+  }
 }
 
 function calcBudget() {
@@ -308,6 +381,7 @@ function calcBudget() {
   const maxHrs = days * 9;
   box.style.display = 'block';
   lbl.textContent = days + ' working day(s) × 9 hrs = ' + maxHrs + ' hrs available budget';
+  calcTotal(); // re-check limit
 }
 
 function workingDays(f, t) {
@@ -328,6 +402,96 @@ function escAttr(str) {
 addTaskRow(<?= json_encode($td['subtask']??'') ?>, <?= json_encode($td['hours']??'') ?>);
 <?php endforeach; ?>
 <?php endif; ?>
+
+// ── Calendar ─────────────────────────────────────────────────
+let calMonth = new Date().getMonth() + 1;
+let calYear = new Date().getFullYear();
+let empTaskData = {};
+
+// Listen for employee selection change
+document.querySelector('[name="assigned_to"]').addEventListener('change', function() {
+  if (this.value) loadCalendar();
+  else {
+    document.getElementById('calendarPlaceholder').style.display = 'block';
+    document.getElementById('calendarContainer').style.display = 'none';
+  }
+});
+
+function changeCalMonth(dir) {
+  calMonth += dir;
+  if (calMonth > 12) { calMonth = 1; calYear++; }
+  if (calMonth < 1) { calMonth = 12; calYear--; }
+  loadCalendar();
+}
+
+function loadCalendar() {
+  const empId = document.querySelector('[name="assigned_to"]').value;
+  if (!empId) return;
+
+  fetch('get_employee_tasks.php?employee_id=' + empId + '&month=' + calMonth + '&year=' + calYear)
+    .then(r => r.json())
+    .then(data => {
+      empTaskData = data;
+      renderCalendar();
+    })
+    .catch(() => renderCalendar());
+}
+
+function renderCalendar() {
+  document.getElementById('calendarPlaceholder').style.display = 'none';
+  document.getElementById('calendarContainer').style.display = 'block';
+
+  const months = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = months[calMonth] + ' ' + calYear;
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // Day headers
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
+    grid.innerHTML += '<div class="day-header">' + d + '</div>';
+  });
+
+  // First day of month
+  const firstDay = new Date(calYear, calMonth - 1, 1);
+  let startDow = firstDay.getDay(); // 0=Sun
+  startDow = startDow === 0 ? 7 : startDow; // Convert to Mon=1
+
+  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+
+  // Empty cells before first day
+  for (let i = 1; i < startDow; i++) {
+    grid.innerHTML += '<div class="day-cell empty"></div>';
+  }
+
+  // Day cells
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const dow = new Date(calYear, calMonth - 1, d).getDay();
+    const isSunday = dow === 0;
+    const dayData = empTaskData[dateStr];
+    const totalHrs = dayData ? dayData.total_hrs : 0;
+    const isFull = totalHrs >= 9;
+
+    let cls = 'day-cell';
+    if (isSunday) cls += ' sunday';
+    if (isFull) cls += ' full';
+
+    let content = '<div class="day-num">' + d + '</div>';
+    if (isSunday) {
+      content += '<div style="font-size:9px;color:var(--muted);">Off</div>';
+    } else if (dayData && dayData.tasks.length > 0) {
+      let hrsClass = totalHrs >= 9 ? 'full' : (totalHrs >= 6 ? 'warn' : 'ok');
+      content += '<span class="day-hrs ' + hrsClass + '">' + totalHrs.toFixed(1) + 'h</span>';
+      dayData.tasks.slice(0, 2).forEach(t => {
+        content += '<div class="day-task">' + escAttr(t.project_code) + ': ' + escAttr(t.subtask.substring(0,12)) + '</div>';
+      });
+      if (dayData.tasks.length > 2) content += '<div class="day-task">+' + (dayData.tasks.length-2) + ' more</div>';
+    }
+
+    grid.innerHTML += '<div class="' + cls + '" title="' + dateStr + (totalHrs ? ' — ' + totalHrs.toFixed(1) + ' hrs assigned' : '') + '">' + content + '</div>';
+  }
+}
 </script>
 </body>
 </html>
