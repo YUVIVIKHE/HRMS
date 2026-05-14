@@ -161,18 +161,28 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
       </div></div>
     <?php else: ?>
 
-    <!-- Project pills -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
-      <?php foreach($myProjects as $proj):
-        $dot = $proj['status']==='Active'?'var(--green)':($proj['status']==='Planning'?'var(--yellow)':'var(--muted-light)');
-        $active = $selectedProject==$proj['id'];
-      ?>
-      <a href="tasks.php?project_id=<?= $proj['id'] ?>" class="proj-pill <?= $active?'active':'' ?>">
-        <span class="dot" style="background:<?= $dot ?>;"></span>
-        <?= htmlspecialchars($proj['project_name']) ?>
-        <span style="font-size:11px;opacity:.7;">(<?= htmlspecialchars($proj['project_code']) ?>)</span>
-      </a>
-      <?php endforeach; ?>
+    <!-- Project selector dropdown -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+      <div style="position:relative;min-width:320px;max-width:480px;flex:1;">
+        <select id="projectSelect" class="form-control" style="font-size:14px;font-weight:600;padding:10px 16px;border-radius:10px;border:1.5px solid var(--border);appearance:none;cursor:pointer;background:var(--surface);"
+          onchange="location.href='tasks.php?project_id='+this.value">
+          <option value="">— Select Project —</option>
+          <?php foreach($myProjects as $proj):
+            $dot = $proj['status']==='Active'?'🟢':($proj['status']==='Planning'?'🟡':'⚪');
+          ?>
+          <option value="<?= $proj['id'] ?>" <?= $selectedProject==$proj['id']?'selected':'' ?>>
+            <?= $dot ?> <?= htmlspecialchars($proj['project_name']) ?> (<?= htmlspecialchars($proj['project_code']) ?>)
+          </option>
+          <?php endforeach; ?>
+        </select>
+        <svg style="position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <?php if($selectedProject): ?>
+        <a href="assign_task.php?project_id=<?= $selectedProject ?>" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Assign Task
+        </a>
+      <?php endif; ?>
     </div>
 
     <?php if($selectedProject && $curProj): ?>
@@ -187,10 +197,6 @@ $statusColor = ['Pending'=>'#d97706','In Progress'=>'#2563eb','Completed'=>'#059
           &nbsp;·&nbsp; <?= array_sum($statusCounts) ?> task(s)
         </div>
       </div>
-      <a href="assign_task.php?project_id=<?= $selectedProject ?>" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Assign Task
-      </a>
     </div>
 
     <!-- Status stat pills -->
