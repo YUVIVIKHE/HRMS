@@ -16,31 +16,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'delete_
     header("Location: projects.php"); exit;
 }
 
-// ── Data ─────────────────────────────────────────────────────
-$filterStatus = $_GET['status'] ?? '';
+// ── Filters ──────────────────────────────────────────────────
+$filterDateFrom = trim($_GET['date_from'] ?? '');
+$filterDateTo   = trim($_GET['date_to'] ?? '');
+$search         = trim($_GET['q'] ?? '');
+
 $where  = ["1=1"];
 $params = [];
-if ($filterStatus) { $where[] = "p.status=?"; $params[] = $filterStatus; }
+if ($filterDateFrom) { $where[] = "p.deadline_date >= ?"; $params[] = $filterDateFrom; }
+if ($filterDateTo)   { $where[] = "p.deadline_date <= ?"; $params[] = $filterDateTo; }
+if ($search)         { $where[] = "(p.project_name LIKE ? OR p.project_code LIKE ? OR p.client_name LIKE ?)"; $params[] = "%$search%"; $params[] = "%$search%"; $params[] = "%$search%"; }
 
 $projects = $db->prepare("
-    SELECT p.*, u.name AS manager_name
+    SELECT p.*, u.name AS manager_name,
+           COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl JOIN task_assignments ta ON tpl.task_id=ta.id WHERE ta.project_id=p.id), 0) AS worked_hours
     FROM projects p
     LEFT JOIN users u ON p.manager_id = u.id
     WHERE " . implode(' AND ', $where) . "
-    ORDER BY p.created_at DESC
+    ORDER BY p.deadline_date ASC
 ");
 $projects->execute($params);
 $projects = $projects->fetchAll();
 
-$counts = [];
-foreach (['Planning','Active','On Hold','Completed','Cancelled'] as $s) {
-    $c = $db->prepare("SELECT COUNT(*) FROM projects WHERE status=?");
-    $c->execute([$s]); $counts[$s] = (int)$c->fetchColumn();
-}
 $total = (int)$db->query("SELECT COUNT(*) FROM projects")->fetchColumn();
+$deadlinePassed = (int)$db->query("SELECT COUNT(*) FROM projects WHERE deadline_date < CURDATE() AND status NOT IN ('Completed','Cancelled')")->fetchColumn();
+$completed = (int)$db->query("SELECT COUNT(*) FROM projects WHERE status='Completed'")->fetchColumn();
 
 $priorityBadge = ['Low'=>'badge-gray','Medium'=>'badge-blue','High'=>'badge-yellow','Critical'=>'badge-red'];
-$statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'badge-yellow','Completed'=>'badge-blue','Cancelled'=>'badge-red'];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -80,7 +82,7 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
     <div class="page-header">
       <div class="page-header-text">
         <h1>Projects</h1>
-        <p>Manage client projects, assign managers, and track timelines.</p>
+        <p>Manage client projects, assign managers, and track progress.</p>
       </div>
       <div class="page-header-actions">
         <a href="add_project.php" class="btn btn-primary">
@@ -91,9 +93,6 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
     </div>
 
     <!-- Stats -->
-    <?php
-      $deadlinePassed = (int)$db->query("SELECT COUNT(*) FROM projects WHERE deadline_date < CURDATE() AND status NOT IN ('Completed','Cancelled')")->fetchColumn();
-    ?>
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
@@ -118,68 +117,77 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
         </div>
         <div class="stat-body">
-          <div class="stat-value"><?= $counts['Completed'] ?></div>
+          <div class="stat-value"><?= $completed ?></div>
           <div class="stat-label">Completed</div>
         </div>
       </div>
     </div>
 
     <!-- Filters -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-      <span style="font-size:13px;font-weight:600;color:var(--text);">All Projects (<?= $total ?>)</span>
-      <div style="margin-left:auto;">
-        <div class="search-box">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="pSearch" placeholder="Search projects…" oninput="filterP(this.value)">
-        </div>
+    <form method="GET" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">
+      <div class="search-box" style="min-width:180px;flex:0 1 240px;">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search projects…">
       </div>
-    </div>
+      <span style="font-size:12px;font-weight:600;color:var(--muted);">Deadline:</span>
+      <input type="date" name="date_from" value="<?= htmlspecialchars($filterDateFrom) ?>" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
+      <span style="font-size:12px;color:var(--muted);">to</span>
+      <input type="date" name="date_to" value="<?= htmlspecialchars($filterDateTo) ?>" class="form-control" style="font-size:12px;padding:7px 10px;width:auto;">
+      <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+      <a href="projects.php" class="btn btn-ghost btn-sm">Reset</a>
+    </form>
 
     <!-- Table -->
     <div class="table-wrap">
       <div class="table-toolbar">
-        <h2>All Projects <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($projects) ?>)</span></h2>
+        <h2>Projects <span style="font-weight:400;color:var(--muted);font-size:13px;">(<?= count($projects) ?>)</span></h2>
       </div>
-      <table id="pTable">
+      <table>
         <thead>
           <tr>
             <th>Project</th>
             <th>Client</th>
             <th>Manager</th>
-            <th>Priority</th>
-            <th>Timeline</th>
-            <th>Hours / Rate</th>
-            <th style="width:90px;"></th>
+            <th>Deadline</th>
+            <th style="text-align:center;">Total Hrs</th>
+            <th style="text-align:center;">Worked</th>
+            <th>Progress</th>
+            <th style="width:120px;"></th>
           </tr>
         </thead>
         <tbody>
           <?php if(empty($projects)): ?>
-            <tr class="empty-row"><td colspan="7">No projects yet. <a href="add_project.php" style="color:var(--brand)">Create your first project →</a></td></tr>
+            <tr class="empty-row"><td colspan="8">No projects found. <a href="add_project.php" style="color:var(--brand)">Create one →</a></td></tr>
           <?php else: foreach($projects as $p):
-            $overdue = $p['status']==='Active' && $p['deadline_date'] < date('Y-m-d');
+            $worked = (float)$p['worked_hours'];
+            $assigned = (float)$p['total_hours'];
+            $pct = $assigned > 0 ? min(100, round(($worked/$assigned)*100)) : 0;
+            $overdue = $p['deadline_date'] < date('Y-m-d');
           ?>
-          <tr class="p-row" data-name="<?= htmlspecialchars(strtolower($p['project_name'].' '.$p['project_code'].' '.($p['client_name']??''))) ?>"
-              style="<?= $overdue?'background:#fff8f8;':'' ?>">
+          <tr style="<?= $overdue?'background:#fff8f8;':'' ?>">
             <td>
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                <code style="font-size:11px;background:var(--surface-2);padding:1px 6px;border-radius:4px;color:var(--muted);flex-shrink:0;"><?= htmlspecialchars($p['project_code']) ?></code>
-              </div>
-              <div class="td-name"><?= htmlspecialchars($p['project_name']) ?></div>
-              <?php if($overdue): ?><div style="font-size:11px;color:var(--red);font-weight:600;">⚠ Overdue</div><?php endif; ?>
+              <code style="font-size:11px;background:var(--surface-2);padding:1px 6px;border-radius:4px;color:var(--muted);"><?= htmlspecialchars($p['project_code']) ?></code>
+              <div class="td-name" style="margin-top:2px;"><?= htmlspecialchars($p['project_name']) ?></div>
             </td>
             <td class="text-muted text-sm"><?= htmlspecialchars($p['client_name'] ?: '—') ?></td>
             <td class="text-sm"><?= htmlspecialchars($p['manager_name'] ?: '—') ?></td>
-            <td><span class="badge <?= $priorityBadge[$p['priority']]??'badge-gray' ?>"><?= $p['priority'] ?></span></td>
             <td class="text-sm">
-              <div style="color:var(--muted);"><?= date('d M Y', strtotime($p['start_date'])) ?></div>
-              <div style="color:<?= $overdue?'var(--red)':'var(--text-2)' ?>;font-weight:<?= $overdue?'600':'400' ?>;"><?= date('d M Y', strtotime($p['deadline_date'])) ?></div>
+              <div style="color:<?= $overdue?'var(--red)':'var(--text)' ?>;font-weight:<?= $overdue?'700':'400' ?>;"><?= date('d M Y', strtotime($p['deadline_date'])) ?></div>
+              <?php if($overdue): ?><span style="font-size:10.5px;color:var(--red);">Overdue</span><?php endif; ?>
             </td>
-            <td class="text-sm">
-              <div class="font-semibold" style="color:var(--brand);"><?= number_format($p['total_hours'],1) ?> hrs</div>
-              <?php if($p['hr_rate'] > 0): ?><div style="color:var(--muted);">₹<?= number_format($p['hr_rate'],0) ?>/hr</div><?php endif; ?>
+            <td style="text-align:center;font-weight:700;color:var(--brand);"><?= number_format($assigned,1) ?></td>
+            <td style="text-align:center;font-weight:700;color:var(--green-text);"><?= number_format($worked,1) ?></td>
+            <td style="min-width:90px;">
+              <div style="display:flex;align-items:center;gap:5px;">
+                <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
+                  <div style="height:100%;width:<?= $pct ?>%;background:<?= $pct>=100?'var(--green)':'var(--blue)' ?>;border-radius:3px;"></div>
+                </div>
+                <span style="font-size:11px;color:var(--muted);"><?= $pct ?>%</span>
+              </div>
             </td>
             <td>
               <div style="display:flex;gap:6px;">
+                <a href="view_project.php?id=<?= $p['id'] ?>" class="btn btn-sm" style="background:var(--brand-light);color:var(--brand);border:1px solid #c7d2fe;">View</a>
                 <a href="add_project.php?id=<?= $p['id'] ?>" class="btn btn-ghost btn-sm">Edit</a>
                 <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this project?')">
                   <input type="hidden" name="action" value="delete_project">
@@ -197,12 +205,5 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
   </div>
 </div>
 </div>
-
-<script>
-function filterP(q) {
-  q = q.toLowerCase();
-  document.querySelectorAll('.p-row').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? '' : 'none'; });
-}
-</script>
 </body>
 </html>
