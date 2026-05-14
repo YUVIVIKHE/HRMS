@@ -9,16 +9,18 @@ guardRole('manager');
 $db  = getDB();
 $uid = $_SESSION['user_id'];
 
-$projectId = (int)($_GET['project_id'] ?? $_POST['project_id'] ?? 0);
-if (!$projectId) { header("Location: tasks.php"); exit; }
+$successMsg = $_SESSION['flash_success'] ?? '';
+$errorMsg   = $_SESSION['flash_error']   ?? '';
+unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
-$project = $db->prepare("SELECT * FROM projects WHERE id = ? AND manager_id = ?");
-$project->execute([$projectId, $uid]);
-$project = $project->fetch();
-if (!$project) {
-    $_SESSION['flash_error'] = "Project not found or not assigned to you.";
-    header("Location: tasks.php"); exit;
-}
+// My projects (assigned by admin)
+$myProjects = $db->prepare("
+    SELECT id, project_name, project_code, deadline_date, total_hours
+    FROM projects WHERE manager_id=? AND status NOT IN ('Cancelled')
+    ORDER BY project_name ASC
+");
+$myProjects->execute([$uid]);
+$myProjects = $myProjects->fetchAll();
 
 // Team members
 $managerEmp = $db->prepare("SELECT e.department_id FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
@@ -29,66 +31,94 @@ if ($deptId) {
     $tm->execute([$deptId, $uid]); $teamMembers = $tm->fetchAll();
 }
 
-$successMsg = $_SESSION['flash_success'] ?? '';
-$errorMsg   = $_SESSION['flash_error']   ?? '';
-unset($_SESSION['flash_success'], $_SESSION['flash_error']);
+// Pre-select project from URL
+$preProject = (int)($_GET['project_id'] ?? 0);
 
 // POST handler
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assign_task') {
+    $projectId  = (int)($_POST['project_id'] ?? 0);
     $assignedTo = (int)($_POST['assigned_to'] ?? 0);
-    $subtasks   = array_filter((array)($_POST['subtasks'] ?? []), fn($s) => in_array($s, SUBTASKS));
     $fromDate   = trim($_POST['from_date'] ?? '');
     $toDate     = trim($_POST['to_date'] ?? '');
     $notes      = trim($_POST['notes'] ?? '');
+    $taskData   = $_POST['tasks'] ?? []; // array of {subtask, hours}
     $errors     = [];
 
+    if (!$projectId) $errors[] = 'Select a project.';
     if (!$assignedTo) $errors[] = 'Select a team member.';
-    if (empty($subtasks)) $errors[] = 'Select at least one subtask.';
     if (!$fromDate || !$toDate) $errors[] = 'Date range required.';
     if ($fromDate && $toDate && $fromDate > $toDate) $errors[] = 'To date must be after From date.';
+    
+    // Validate tasks
+    $validTasks = [];
+    if (!empty($taskData)) {
+        foreach ($taskData as $td) {
+            $subtask = trim($td['subtask'] ?? '');
+            $hours   = (float)($td['hours'] ?? 0);
+            if ($subtask && $hours > 0) {
+                $validTasks[] = ['subtask' => $subtask, 'hours' => $hours];
+            }
+        }
+    }
+    if (empty($validTasks)) $errors[] = 'Add at least one task with hours.';
 
     if (empty($errors)) {
-        $wDays = workingDays($fromDate, $toDate);
-        $maxHrs = $wDays * 9;
-        if ($maxHrs <= 0) { $errors[] = 'No working days in range.'; }
-        else {
-            $ex = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM task_assignments WHERE assigned_to=? AND project_id=? AND from_date<=? AND to_date>=?");
-            $ex->execute([$assignedTo, $projectId, $toDate, $fromDate]);
-            $already = (float)$ex->fetchColumn();
-            $each = max(0.5, round(($maxHrs / count($subtasks)) * 2) / 2);
-            if (($already + $each * count($subtasks)) > $maxHrs) {
-                $errors[] = "Over budget: " . ($already + $each * count($subtasks)) . " hrs exceeds $maxHrs hr limit.";
-            }
+        // Verify project belongs to this manager
+        $chk = $db->prepare("SELECT id FROM projects WHERE id=? AND manager_id=?");
+        $chk->execute([$projectId, $uid]);
+        if (!$chk->fetch()) {
+            $errors[] = 'Project not found.';
         }
     }
 
     if (empty($errors)) {
-        $wDays = workingDays($fromDate, $toDate);
-        $each = max(0.5, round((($wDays * 9) / count($subtasks)) * 2) / 2);
-        $stmt = $db->prepare("INSERT INTO task_assignments (project_id,assigned_to,assigned_by,subtask,from_date,to_date,hours,notes) VALUES (?,?,?,?,?,?,?,?)");
-        foreach ($subtasks as $st) $stmt->execute([$projectId, $assignedTo, $uid, $st, $fromDate, $toDate, $each, $notes ?: null]);
-        $_SESSION['flash_success'] = count($subtasks) . " task(s) assigned.";
-        header("Location: tasks.php?project_id=$projectId"); exit;
-    } else { $errorMsg = implode(' ', $errors); }
+        $stmt = $db->prepare("INSERT INTO task_assignments (project_id, assigned_to, assigned_by, subtask, from_date, to_date, hours, notes) VALUES (?,?,?,?,?,?,?,?)");
+        foreach ($validTasks as $vt) {
+            $stmt->execute([$projectId, $assignedTo, $uid, $vt['subtask'], $fromDate, $toDate, $vt['hours'], $notes ?: null]);
+        }
+        $_SESSION['flash_success'] = count($validTasks) . " task(s) assigned successfully.";
+        header("Location: tasks.php?project_id=$projectId&member_id=$assignedTo"); exit;
+    } else {
+        $errorMsg = implode(' ', $errors);
+    }
+}
+
+// Calculate working hours for display
+function calcWorkingDays(string $from, string $to): int {
+    if (!$from || !$to || $from > $to) return 0;
+    $days = 0;
+    $d = new DateTime($from);
+    $e = new DateTime($to);
+    while ($d <= $e) {
+        if ((int)$d->format('N') !== 7) $days++;
+        $d->modify('+1 day');
+    }
+    return $days;
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Assign Task - HRMS Portal</title>
+<title>Assign Task – HRMS Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
+<style>
+.task-row{display:flex;gap:10px;align-items:center;margin-bottom:10px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;}
+.task-row .form-control{margin:0;}
+.budget-box{border-radius:8px;padding:12px 16px;margin-bottom:20px;border:1.5px solid #c7d2fe;background:var(--brand-light);font-size:13px;}
+</style>
 </head>
 <body>
 <div class="app-shell">
 <?php include __DIR__ . '/sidebar.php'; ?>
 <div class="main-content">
+
   <header class="topbar">
     <div class="topbar-left">
       <span class="page-title">Assign Task</span>
-      <span class="page-breadcrumb"><a href="tasks.php?project_id=<?= $projectId ?>" style="color:var(--muted);text-decoration:none;">Tasks</a> / <?= htmlspecialchars($project['project_name']) ?></span>
+      <span class="page-breadcrumb"><a href="tasks.php" style="color:var(--muted);text-decoration:none;">Tasks</a> / Assign New</span>
     </div>
     <div class="topbar-right">
       <span class="role-chip">Manager</span>
@@ -96,124 +126,208 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
       <span class="topbar-name"><?= htmlspecialchars($_SESSION['user_name']) ?></span>
     </div>
   </header>
+
   <div class="page-body">
+
     <?php if($successMsg): ?><div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div><?php endif; ?>
     <?php if($errorMsg): ?><div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div><?php endif; ?>
 
-    <!-- Project banner -->
-    <div style="background:linear-gradient(135deg,var(--brand),var(--brand-mid));border-radius:var(--radius-lg);padding:18px 24px;color:#fff;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div>
-        <div style="font-size:11px;font-weight:700;opacity:.8;text-transform:uppercase;">Project</div>
-        <div style="font-size:17px;font-weight:800;margin-top:2px;"><?= htmlspecialchars($project['project_name']) ?></div>
-        <div style="font-size:12.5px;opacity:.85;margin-top:3px;">
-          <code style="background:rgba(255,255,255,.2);padding:1px 7px;border-radius:4px;"><?= htmlspecialchars($project['project_code']) ?></code>
-          - Deadline: <?= date('d M Y', strtotime($project['deadline_date'])) ?>
-          - <?= number_format($project['total_hours'],1) ?> total hrs
-        </div>
-      </div>
-      <a href="tasks.php?project_id=<?= $projectId ?>" class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);">Back to Tasks</a>
-    </div>
-
-    <?php if(empty($teamMembers)): ?>
-      <div class="alert alert-warning" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">No team members found in your department.</div>
+    <?php if(empty($myProjects)): ?>
+      <div class="card"><div class="card-body" style="text-align:center;padding:60px 20px;">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No projects assigned to you</div>
+        <div style="font-size:13px;color:var(--muted);">Ask admin to assign a project first.</div>
+      </div></div>
+    <?php elseif(empty($teamMembers)): ?>
+      <div class="alert" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">No team members found in your department.</div>
     <?php else: ?>
 
-    <div class="card">
-      <div class="card-header"><div><h2>New Task Assignment</h2><p>Max 9 hrs per working day. Hours split equally across subtasks.</p></div></div>
-      <div class="card-body">
-        <form method="POST" onsubmit="return validateForm()">
-          <input type="hidden" name="action" value="assign_task">
-          <input type="hidden" name="project_id" value="<?= $projectId ?>">
+    <form method="POST" id="assignForm">
+      <input type="hidden" name="action" value="assign_task">
 
-          <!-- Team member -->
-          <div class="form-group" style="margin-bottom:18px;">
-            <label>Team Member <span class="req">*</span></label>
-            <select name="assigned_to" class="form-control" style="max-width:400px;" required>
-              <option value="">-- Select Team Member --</option>
-              <?php foreach($teamMembers as $m): ?>
-                <option value="<?= $m['id'] ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']===$m['id'])?'selected':'' ?>>
-                  <?= htmlspecialchars($m['name']) ?> (<?= htmlspecialchars($m['job_title'] ?: $m['emp_code'] ?: $m['email']) ?>)
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><h2>Assignment Details</h2></div>
+        <div class="card-body">
+          <div class="form-grid">
 
-          <!-- Date range -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;max-width:400px;">
+            <!-- Project -->
+            <div class="form-group">
+              <label>Project <span class="req">*</span></label>
+              <select name="project_id" id="projectSelect" class="form-control" required>
+                <option value="">— Select Project —</option>
+                <?php foreach($myProjects as $p): ?>
+                  <option value="<?= $p['id'] ?>" data-deadline="<?= $p['deadline_date'] ?>" data-hours="<?= $p['total_hours'] ?>" <?= ($preProject==$p['id']||(isset($_POST['project_id'])&&(int)$_POST['project_id']==$p['id']))?'selected':'' ?>>
+                    <?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <!-- Employee -->
+            <div class="form-group">
+              <label>Team Member <span class="req">*</span></label>
+              <select name="assigned_to" class="form-control" required>
+                <option value="">— Select Employee —</option>
+                <?php foreach($teamMembers as $m): ?>
+                  <option value="<?= $m['id'] ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']==$m['id'])?'selected':'' ?>>
+                    <?= htmlspecialchars($m['name']) ?> (<?= htmlspecialchars($m['job_title'] ?: $m['emp_code'] ?: $m['email']) ?>)
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <!-- Date range -->
             <div class="form-group">
               <label>From Date <span class="req">*</span></label>
-              <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="updateBudget()">
+              <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="calcBudget()">
             </div>
             <div class="form-group">
               <label>To Date <span class="req">*</span></label>
-              <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="updateBudget()">
+              <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="calcBudget()">
             </div>
+
           </div>
 
-          <!-- Budget -->
-          <div id="budgetBox" style="display:none;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;border:1px solid #c7d2fe;background:var(--brand-light);max-width:500px;">
+          <!-- Budget display -->
+          <div class="budget-box" id="budgetBox" style="display:none;margin-top:16px;">
             <span style="font-weight:700;color:var(--brand);" id="budgetLabel"></span>
-            <span style="color:var(--muted);font-size:12px;margin-left:6px;" id="budgetSplit"></span>
           </div>
 
-          <!-- Subtasks -->
-          <div class="form-group" style="margin-bottom:16px;">
-            <label>Subtasks <span class="req">*</span></label>
-            <div style="display:flex;gap:6px;margin:5px 0 8px;">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="selAll(true)">Select All</button>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="selAll(false)">Clear</button>
-              <span id="selCount" style="font-size:12px;color:var(--muted);align-self:center;"></span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;border:1px solid var(--border);border-radius:8px;padding:10px;max-height:280px;overflow-y:auto;">
-              <?php foreach(SUBTASKS as $st): $chk = in_array($st,(array)($_POST['subtasks']??[])); ?>
-              <label style="display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:500;transition:background .12s;" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
-                <input type="checkbox" name="subtasks[]" value="<?= htmlspecialchars($st) ?>" class="st-chk" style="width:14px;height:14px;accent-color:var(--brand);cursor:pointer;" <?= $chk?'checked':'' ?> onchange="updateBudget()">
-                <?= htmlspecialchars($st) ?>
-              </label>
-              <?php endforeach; ?>
-            </div>
-          </div>
-
-          <!-- Notes -->
-          <div class="form-group" style="margin-bottom:20px;max-width:500px;">
-            <label>Notes</label>
-            <textarea name="notes" class="form-control" rows="2" placeholder="Optional instructions..."><?= htmlspecialchars($_POST['notes'] ?? '') ?></textarea>
-          </div>
-
-          <div style="display:flex;gap:10px;">
-            <a href="tasks.php?project_id=<?= $projectId ?>" class="btn btn-secondary">Cancel</a>
-            <button type="submit" class="btn btn-primary">Assign Tasks</button>
-          </div>
-        </form>
+        </div>
       </div>
-    </div>
+
+      <!-- Tasks Section -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <div>
+            <h2>Tasks & Hours</h2>
+            <p>Select tasks and enter hours for each. You decide how many hours per task.</p>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <!-- Add from predefined list -->
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+            <select id="subtaskPicker" class="form-control" style="max-width:350px;font-size:13px;">
+              <option value="">— Pick a subtask to add —</option>
+              <?php foreach(SUBTASKS as $st): ?>
+                <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTaskFromPicker()">+ Add Task</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="addCustomTask()">+ Custom Task</button>
+          </div>
+
+          <!-- Task rows -->
+          <div id="taskList">
+            <!-- Dynamic rows added here -->
+          </div>
+
+          <!-- Total -->
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <span style="font-size:13px;color:var(--muted);">Total Hours:</span>
+            <span style="font-size:18px;font-weight:800;color:var(--brand);" id="totalHrs">0.0</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header"><h2>Notes</h2></div>
+        <div class="card-body">
+          <textarea name="notes" class="form-control" rows="2" placeholder="Optional instructions for the employee…" style="resize:vertical;"><?= htmlspecialchars($_POST['notes'] ?? '') ?></textarea>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding-bottom:32px;">
+        <a href="tasks.php" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary" id="btnSubmit">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Assign Tasks
+        </button>
+      </div>
+    </form>
+
     <?php endif; ?>
   </div>
 </div>
 </div>
 
 <script>
-function workingDays(f,t){if(!f||!t||f>t)return 0;let d=new Date(f),e=new Date(t),n=0;while(d<=e){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}return n;}
-function updateBudget(){
-  const f=document.getElementById('fromDate').value,t=document.getElementById('toDate').value;
-  const chks=document.querySelectorAll('.st-chk:checked').length;
-  const box=document.getElementById('budgetBox'),lbl=document.getElementById('budgetLabel'),spl=document.getElementById('budgetSplit');
-  document.getElementById('selCount').textContent=chks>0?'('+chks+' selected)':'';
-  if(!f||!t||f>t){box.style.display='none';return;}
-  const w=workingDays(f,t),max=w*9;
-  box.style.display='block';
-  lbl.textContent=w+' day(s) x 9 hrs = '+max+' hrs budget';
-  if(chks>0){const each=Math.max(0.5,Math.round((max/chks)*2)/2);spl.textContent='-> '+chks+' subtask(s) ~'+each+' hrs each';
-    const over=(each*chks)>max;box.style.background=over?'var(--red-bg)':'var(--brand-light)';box.style.borderColor=over?'#fca5a5':'#c7d2fe';lbl.style.color=over?'var(--red)':'var(--brand)';
-  }else{spl.textContent='';}
+let taskIndex = 0;
+
+function addTaskRow(subtask, hours) {
+  const list = document.getElementById('taskList');
+  const idx = taskIndex++;
+  const row = document.createElement('div');
+  row.className = 'task-row';
+  row.id = 'taskRow-' + idx;
+  row.innerHTML = `
+    <div style="flex:1;min-width:200px;">
+      <input type="text" name="tasks[${idx}][subtask]" class="form-control" value="${escAttr(subtask)}" placeholder="Task name" required style="font-size:13px;font-weight:600;">
+    </div>
+    <div style="width:100px;">
+      <input type="number" name="tasks[${idx}][hours]" class="form-control task-hrs-input" min="0.5" step="0.5" value="${hours||''}" placeholder="Hrs" required style="font-size:13px;font-weight:700;text-align:center;" oninput="calcTotal()">
+    </div>
+    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;" onclick="removeTask('taskRow-${idx}')">✕</button>
+  `;
+  list.appendChild(row);
+  calcTotal();
 }
-function selAll(v){document.querySelectorAll('.st-chk').forEach(c=>c.checked=v);updateBudget();}
-function validateForm(){
-  if(!document.querySelector('[name="assigned_to"]').value){alert('Select a team member.');return false;}
-  if(!document.getElementById('fromDate').value||!document.getElementById('toDate').value){alert('Select dates.');return false;}
-  if(!document.querySelectorAll('.st-chk:checked').length){alert('Select subtasks.');return false;}
-  return true;
+
+function addTaskFromPicker() {
+  const sel = document.getElementById('subtaskPicker');
+  if (!sel.value) { alert('Pick a subtask first.'); return; }
+  addTaskRow(sel.value, '');
+  sel.value = '';
 }
+
+function addCustomTask() {
+  addTaskRow('', '');
+}
+
+function removeTask(id) {
+  document.getElementById(id)?.remove();
+  calcTotal();
+}
+
+function calcTotal() {
+  let total = 0;
+  document.querySelectorAll('.task-hrs-input').forEach(inp => { total += parseFloat(inp.value) || 0; });
+  document.getElementById('totalHrs').textContent = total.toFixed(1);
+}
+
+function calcBudget() {
+  const from = document.getElementById('fromDate').value;
+  const to = document.getElementById('toDate').value;
+  const box = document.getElementById('budgetBox');
+  const lbl = document.getElementById('budgetLabel');
+  if (!from || !to || from > to) { box.style.display = 'none'; return; }
+  const days = workingDays(from, to);
+  const maxHrs = days * 9;
+  box.style.display = 'block';
+  lbl.textContent = days + ' working day(s) × 9 hrs = ' + maxHrs + ' hrs available budget';
+}
+
+function workingDays(f, t) {
+  if (!f || !t || f > t) return 0;
+  let d = new Date(f), e = new Date(t), n = 0;
+  while (d <= e) { if (d.getDay() !== 0) n++; d.setDate(d.getDate() + 1); }
+  return n;
+}
+
+function escAttr(str) {
+  const d = document.createElement('div'); d.textContent = str;
+  return d.innerHTML.replace(/"/g, '&quot;');
+}
+
+// Pre-populate from POST if validation failed
+<?php if(!empty($_POST['tasks'])): ?>
+<?php foreach($_POST['tasks'] as $td): ?>
+addTaskRow(<?= json_encode($td['subtask']??'') ?>, <?= json_encode($td['hours']??'') ?>);
+<?php endforeach; ?>
+<?php endif; ?>
 </script>
 </body>
 </html>
