@@ -31,7 +31,6 @@ if ($deptId) {
     $tm->execute([$deptId, $uid]); $teamMembers = $tm->fetchAll();
 }
 
-// Pre-select project from URL
 $preProject = (int)($_GET['project_id'] ?? 0);
 
 // POST handler
@@ -41,15 +40,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     $fromDate   = trim($_POST['from_date'] ?? '');
     $toDate     = trim($_POST['to_date'] ?? '');
     $notes      = trim($_POST['notes'] ?? '');
-    $taskData   = $_POST['tasks'] ?? []; // array of {subtask, hours}
+    $taskData   = $_POST['tasks'] ?? [];
     $errors     = [];
 
     if (!$projectId) $errors[] = 'Select a project.';
     if (!$assignedTo) $errors[] = 'Select a team member.';
     if (!$fromDate || !$toDate) $errors[] = 'Date range required.';
     if ($fromDate && $toDate && $fromDate > $toDate) $errors[] = 'To date must be after From date.';
-    
-    // Validate tasks
+
     $validTasks = [];
     if (!empty($taskData)) {
         foreach ($taskData as $td) {
@@ -63,29 +61,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     if (empty($validTasks)) $errors[] = 'Add at least one task with hours.';
 
     if (empty($errors)) {
-        // Verify project belongs to this manager
         $chk = $db->prepare("SELECT id FROM projects WHERE id=? AND manager_id=?");
         $chk->execute([$projectId, $uid]);
-        if (!$chk->fetch()) {
-            $errors[] = 'Project not found.';
-        }
+        if (!$chk->fetch()) $errors[] = 'Project not found.';
     }
 
     if (empty($errors)) {
-        // Calculate budget: working days × 9 hrs
-        $wDays = calcWorkingDays($fromDate, $toDate);
+        // Budget check
+        $wDays = 0;
+        $d = new DateTime($fromDate); $e = new DateTime($toDate);
+        while ($d <= $e) { if ((int)$d->format('N') !== 7) $wDays++; $d->modify('+1 day'); }
         $maxHrs = $wDays * 9;
 
-        // Get already assigned hours for this employee in overlapping date range
         $existing = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM task_assignments WHERE assigned_to=? AND from_date<=? AND to_date>=?");
         $existing->execute([$assignedTo, $toDate, $fromDate]);
         $alreadyAssigned = (float)$existing->fetchColumn();
 
-        // Total new hours
         $newHrs = array_sum(array_column($validTasks, 'hours'));
 
         if (($alreadyAssigned + $newHrs) > $maxHrs) {
-            $errors[] = "Exceeds budget! Available: " . number_format($maxHrs,1) . " hrs, Already assigned: " . number_format($alreadyAssigned,1) . " hrs, New: " . number_format($newHrs,1) . " hrs. Total would be " . number_format($alreadyAssigned + $newHrs,1) . " hrs.";
+            $errors[] = "Exceeds budget! Max: {$maxHrs} hrs. Already assigned: " . number_format($alreadyAssigned,1) . " hrs. New: " . number_format($newHrs,1) . " hrs.";
         }
     }
 
@@ -100,19 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
         $errorMsg = implode(' ', $errors);
     }
 }
-
-// Calculate working hours for display
-function calcWorkingDays(string $from, string $to): int {
-    if (!$from || !$to || $from > $to) return 0;
-    $days = 0;
-    $d = new DateTime($from);
-    $e = new DateTime($to);
-    while ($d <= $e) {
-        if ((int)$d->format('N') !== 7) $days++;
-        $d->modify('+1 day');
-    }
-    return $days;
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -123,26 +105,30 @@ function calcWorkingDays(string $from, string $to): int {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
 <style>
-.task-row{display:flex;gap:10px;align-items:center;margin-bottom:10px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;}
-.task-row .form-control{margin:0;}
-.budget-box{border-radius:8px;padding:12px 16px;margin-bottom:20px;border:1.5px solid #c7d2fe;background:var(--brand-light);font-size:13px;}
+.assign-layout{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;}
+@media(max-width:1100px){.assign-layout{grid-template-columns:1fr;}}
+.task-row{display:flex;gap:10px;align-items:center;margin-bottom:8px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;}
+.budget-pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;margin-top:12px;}
+.budget-pill.ok{background:#d1fae5;color:#059669;border:1px solid #a7f3d0;}
+.budget-pill.over{background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;}
 /* Calendar */
-.emp-cal{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);}
-.emp-cal-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);}
-.emp-cal-header h3{font-size:14px;font-weight:700;margin:0;color:var(--text);}
-.emp-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);padding:1px;}
-.emp-cal-grid .day-header{background:var(--surface-2);text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding:6px 2px;}
-.emp-cal-grid .day-cell{background:var(--surface);min-height:60px;padding:4px;position:relative;font-size:11px;}
-.emp-cal-grid .day-cell.empty{background:var(--surface-2);}
-.emp-cal-grid .day-cell.sunday{background:#fef2f2;}
-.emp-cal-grid .day-cell .day-num{font-weight:700;color:var(--text);margin-bottom:2px;}
-.emp-cal-grid .day-cell.full{background:#fef3c7;}
-.emp-cal-grid .day-cell.full .day-num{color:#d97706;}
-.day-hrs{font-size:10px;font-weight:700;border-radius:3px;padding:1px 4px;display:inline-block;margin-top:1px;}
-.day-hrs.ok{background:#d1fae5;color:#059669;}
-.day-hrs.warn{background:#fef3c7;color:#d97706;}
-.day-hrs.full{background:#fee2e2;color:#dc2626;}
-.day-task{font-size:9.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+.cal-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);}
+.cal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--border);}
+.cal-header h4{font-size:13px;font-weight:700;margin:0;color:var(--text);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);}
+.cal-grid .dh{background:var(--surface-2);text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:5px 2px;}
+.cal-grid .dc{background:var(--surface);min-height:44px;padding:3px;font-size:10px;position:relative;}
+.cal-grid .dc.empty{background:var(--surface-2);}
+.cal-grid .dc.sun{background:#fef2f2;}
+.cal-grid .dc .dn{font-weight:700;font-size:11px;color:var(--text);}
+.cal-grid .dc.full{background:#fef3c7;}
+.cal-grid .dc.full .dn{color:#d97706;}
+.cal-grid .dc.booked .dn{color:#059669;}
+.cal-hrs{font-size:9px;font-weight:700;border-radius:3px;padding:1px 3px;display:inline-block;}
+.cal-hrs.g{background:#d1fae5;color:#059669;}
+.cal-hrs.y{background:#fef3c7;color:#d97706;}
+.cal-hrs.r{background:#fee2e2;color:#dc2626;}
+.cal-task{font-size:8.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -169,7 +155,7 @@ function calcWorkingDays(string $from, string $to): int {
 
     <?php if(empty($myProjects)): ?>
       <div class="card"><div class="card-body" style="text-align:center;padding:60px 20px;">
-        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">No projects assigned to you</div>
+        <div style="font-size:15px;font-weight:700;">No projects assigned to you</div>
         <div style="font-size:13px;color:var(--muted);">Ask admin to assign a project first.</div>
       </div></div>
     <?php elseif(empty($teamMembers)): ?>
@@ -179,127 +165,127 @@ function calcWorkingDays(string $from, string $to): int {
     <form method="POST" id="assignForm">
       <input type="hidden" name="action" value="assign_task">
 
-      <div class="card" style="margin-bottom:20px;">
-        <div class="card-header"><h2>Assignment Details</h2></div>
-        <div class="card-body">
-          <div class="form-grid">
+      <div class="assign-layout">
+        <!-- LEFT: Form -->
+        <div>
+          <!-- Step 1: Employee + Project + Dates -->
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-body" style="padding:20px;">
 
-            <!-- Employee (first) -->
-            <div class="form-group">
-              <label>Team Member <span class="req">*</span></label>
-              <select name="assigned_to" class="form-control" required>
-                <option value="">— Select Employee —</option>
-                <?php foreach($teamMembers as $m): ?>
-                  <option value="<?= $m['id'] ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']==$m['id'])?'selected':'' ?>>
-                    <?= htmlspecialchars($m['name']) ?> (<?= htmlspecialchars($m['job_title'] ?: $m['emp_code'] ?: $m['email']) ?>)
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-
-            <!-- From/To Date (second) -->
-            <div class="form-group">
-              <label>From Date <span class="req">*</span></label>
-              <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="onDatesChanged()">
-            </div>
-            <div class="form-group">
-              <label>To Date <span class="req">*</span></label>
-              <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="onDatesChanged()">
-            </div>
-
-          </div>
-
-          <!-- Budget display -->
-          <div class="budget-box" id="budgetBox" style="display:none;margin-top:16px;">
-            <span style="font-weight:700;color:var(--brand);" id="budgetLabel"></span>
-          </div>
-          <!-- Busy warning -->
-          <div id="busyWarning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-weight:600;color:var(--red);"></div>
-
-        </div>
-      </div>
-
-      <!-- Employee Calendar -->
-      <div class="card" style="margin-bottom:20px;" id="calendarCard">
-        <div class="card-header"><h2>Employee Schedule</h2><p>Highlighted dates show existing task assignments. Red = fully booked (9 hrs). Select employee and dates first.</p></div>
-        <div class="card-body">
-          <div id="calendarPlaceholder" style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">
-            Select an employee to view their schedule.
-          </div>
-          <div id="calendarContainer" style="display:none;">
-            <div class="emp-cal">
-              <div class="emp-cal-header">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="changeCalMonth(-1)">← Prev</button>
-                <h3 id="calMonthLabel"></h3>
-                <button type="button" class="btn btn-ghost btn-sm" onclick="changeCalMonth(1)">Next →</button>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <!-- Employee -->
+                <div class="form-group">
+                  <label>Team Member <span class="req">*</span></label>
+                  <select name="assigned_to" id="empSelect" class="form-control" required onchange="onEmpChange()">
+                    <option value="">— Select Employee —</option>
+                    <?php foreach($teamMembers as $m): ?>
+                      <option value="<?= $m['id'] ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']==$m['id'])?'selected':'' ?>>
+                        <?= htmlspecialchars($m['name']) ?> (<?= htmlspecialchars($m['job_title'] ?: $m['emp_code'] ?: $m['email']) ?>)
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <!-- Project -->
+                <div class="form-group">
+                  <label>Project <span class="req">*</span></label>
+                  <select name="project_id" id="projectSelect" class="form-control" required>
+                    <option value="">— Select Project —</option>
+                    <?php foreach($myProjects as $p): ?>
+                      <option value="<?= $p['id'] ?>" <?= ($preProject==$p['id']||(isset($_POST['project_id'])&&(int)$_POST['project_id']==$p['id']))?'selected':'' ?>>
+                        <?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <!-- From -->
+                <div class="form-group">
+                  <label>From Date <span class="req">*</span></label>
+                  <input type="date" name="from_date" id="fromDate" class="form-control" value="<?= htmlspecialchars($_POST['from_date'] ?? '') ?>" required onchange="onDatesChange()">
+                </div>
+                <!-- To -->
+                <div class="form-group">
+                  <label>To Date <span class="req">*</span></label>
+                  <input type="date" name="to_date" id="toDate" class="form-control" value="<?= htmlspecialchars($_POST['to_date'] ?? '') ?>" required onchange="onDatesChange()">
+                </div>
               </div>
-              <div class="emp-cal-grid" id="calGrid"></div>
+
+              <!-- Budget -->
+              <div id="budgetArea"></div>
+              <!-- Busy warning -->
+              <div id="busyWarning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--red);"></div>
+
+            </div>
+          </div>
+
+          <!-- Step 2: Subtasks -->
+          <div class="card" style="margin-bottom:16px;">
+            <div class="card-header" style="padding:14px 20px;"><h2 style="font-size:15px;">Subtasks & Hours</h2></div>
+            <div class="card-body" style="padding:16px 20px;">
+
+              <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                <select id="subtaskPicker" class="form-control" style="max-width:300px;font-size:12.5px;">
+                  <option value="">— Pick subtask —</option>
+                  <?php foreach(SUBTASKS as $st): ?>
+                    <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addFromPicker()">+ Add</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="addCustom()">+ Custom</button>
+              </div>
+
+              <div id="taskList"></div>
+
+              <!-- Total -->
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                <span style="font-size:13px;color:var(--muted);">Total:</span>
+                <span style="font-size:18px;font-weight:800;color:var(--brand);" id="totalHrs">0.0</span>
+              </div>
+              <div id="overWarning" style="display:none;margin-top:8px;padding:8px 12px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:12px;font-weight:600;color:var(--red);"></div>
+
+            </div>
+          </div>
+
+          <!-- Notes + Submit -->
+          <div class="card" style="margin-bottom:20px;">
+            <div class="card-body" style="padding:16px 20px;">
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Notes (optional)</label>
+                <textarea name="notes" class="form-control" rows="2" placeholder="Instructions for the employee…"><?= htmlspecialchars($_POST['notes'] ?? '') ?></textarea>
+              </div>
+              <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <a href="tasks.php" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary" id="btnSubmit">Assign Tasks</button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Project (after calendar) -->
-      <div class="card" style="margin-bottom:20px;">
-        <div class="card-header"><h2>Project & Tasks</h2></div>
-        <div class="card-body">
-
-          <div class="form-group" style="margin-bottom:20px;max-width:400px;">
-            <label>Project <span class="req">*</span></label>
-            <select name="project_id" id="projectSelect" class="form-control" required>
-              <option value="">— Select Project —</option>
-              <?php foreach($myProjects as $p): ?>
-                <option value="<?= $p['id'] ?>" data-deadline="<?= $p['deadline_date'] ?>" data-hours="<?= $p['total_hours'] ?>" <?= ($preProject==$p['id']||(isset($_POST['project_id'])&&(int)$_POST['project_id']==$p['id']))?'selected':'' ?>>
-                  <?= htmlspecialchars($p['project_name']) ?> (<?= htmlspecialchars($p['project_code']) ?>)
-                </option>
-              <?php endforeach; ?>
-            </select>
+        <!-- RIGHT: Calendar -->
+        <div>
+          <div class="card" style="position:sticky;top:80px;">
+            <div class="card-header" style="padding:12px 16px;"><h2 style="font-size:14px;">Employee Schedule</h2></div>
+            <div class="card-body" style="padding:12px;">
+              <div id="calPlaceholder" style="text-align:center;padding:30px 10px;color:var(--muted);font-size:12.5px;">
+                Select an employee to view schedule.
+              </div>
+              <div id="calContainer" style="display:none;">
+                <div class="cal-wrap">
+                  <div class="cal-header">
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="calNav(-1)" style="padding:4px 8px;">←</button>
+                    <h4 id="calLabel"></h4>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="calNav(1)" style="padding:4px 8px;">→</button>
+                  </div>
+                  <div class="cal-grid" id="calGrid"></div>
+                </div>
+                <div style="margin-top:8px;font-size:10.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;">
+                  <span><span class="cal-hrs g">●</span> Available</span>
+                  <span><span class="cal-hrs y">●</span> Partial</span>
+                  <span><span class="cal-hrs r">●</span> Full (9h)</span>
+                </div>
+              </div>
+            </div>
           </div>
-
-          <!-- Add from predefined list -->
-          <label style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:block;">Tasks & Hours</label>
-          <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Select tasks and enter hours for each. You decide how many hours per task.</p>
-          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-            <select id="subtaskPicker" class="form-control" style="max-width:350px;font-size:13px;">
-              <option value="">— Pick a subtask to add —</option>
-              <?php foreach(SUBTASKS as $st): ?>
-                <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
-              <?php endforeach; ?>
-            </select>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="addTaskFromPicker()">+ Add Task</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="addCustomTask()">+ Custom Task</button>
-          </div>
-
-          <!-- Task rows -->
-          <div id="taskList">
-            <!-- Dynamic rows added here -->
-          </div>
-
-          <!-- Total -->
-          <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-            <span style="font-size:13px;color:var(--muted);">Total Hours:</span>
-            <span style="font-size:18px;font-weight:800;color:var(--brand);" id="totalHrs">0.0</span>
-          </div>
-          <div id="budgetWarning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--red-bg);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-weight:600;color:var(--red);"></div>
-
         </div>
-      </div>
-
-      <!-- Notes -->
-      <div class="card" style="margin-bottom:20px;">
-        <div class="card-header"><h2>Notes</h2></div>
-        <div class="card-body">
-          <textarea name="notes" class="form-control" rows="2" placeholder="Optional instructions for the employee…" style="resize:vertical;"><?= htmlspecialchars($_POST['notes'] ?? '') ?></textarea>
-        </div>
-      </div>
-
-      <!-- Actions -->
-      <div style="display:flex;justify-content:flex-end;gap:10px;padding-bottom:32px;">
-        <a href="tasks.php" class="btn btn-secondary">Cancel</a>
-        <button type="submit" class="btn btn-primary" id="btnSubmit">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          Assign Tasks
-        </button>
       </div>
     </form>
 
@@ -309,229 +295,148 @@ function calcWorkingDays(string $from, string $to): int {
 </div>
 
 <script>
-let taskIndex = 0;
+let taskIdx = 0, calMonth = new Date().getMonth()+1, calYear = new Date().getFullYear(), empData = {};
 
-function addTaskRow(subtask, hours) {
-  const list = document.getElementById('taskList');
-  const idx = taskIndex++;
-  const row = document.createElement('div');
-  row.className = 'task-row';
-  row.id = 'taskRow-' + idx;
-  row.innerHTML = `
-    <div style="flex:1;min-width:200px;">
-      <input type="text" name="tasks[${idx}][subtask]" class="form-control" value="${escAttr(subtask)}" placeholder="Task name" required style="font-size:13px;font-weight:600;">
-    </div>
-    <div style="width:100px;">
-      <input type="number" name="tasks[${idx}][hours]" class="form-control task-hrs-input" min="0.5" step="0.5" value="${hours||''}" placeholder="Hrs" required style="font-size:13px;font-weight:700;text-align:center;" oninput="calcTotal()">
-    </div>
-    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;" onclick="removeTask('taskRow-${idx}')">✕</button>
-  `;
-  list.appendChild(row);
-  calcTotal();
+// ── Task rows ────────────────────────────────────────────────
+function addRow(name, hrs) {
+  const i = taskIdx++;
+  const el = document.createElement('div');
+  el.className = 'task-row'; el.id = 'tr-'+i;
+  el.innerHTML = `<div style="flex:1"><input type="text" name="tasks[${i}][subtask]" class="form-control" value="${esc(name)}" placeholder="Task name" required style="font-size:12.5px;font-weight:600;"></div>
+    <div style="width:80px"><input type="number" name="tasks[${i}][hours]" class="form-control thr" min="0.5" step="0.5" value="${hrs||''}" placeholder="Hrs" required style="font-size:12.5px;font-weight:700;text-align:center;" oninput="reCalc()"></div>
+    <button type="button" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;padding:4px 8px;" onclick="document.getElementById('tr-${i}').remove();reCalc()">✕</button>`;
+  document.getElementById('taskList').appendChild(el);
+  reCalc();
+}
+function addFromPicker(){ const s=document.getElementById('subtaskPicker'); if(!s.value){alert('Pick a subtask.');return;} addRow(s.value,''); s.value=''; }
+function addCustom(){ addRow('',''); }
+
+function reCalc(){
+  let t=0; document.querySelectorAll('.thr').forEach(i=>{t+=parseFloat(i.value)||0;});
+  document.getElementById('totalHrs').textContent=t.toFixed(1);
+  const max=getBudget();
+  const warn=document.getElementById('overWarning');
+  if(max>0 && t>max){ warn.style.display='block'; warn.textContent='⚠ Total '+t.toFixed(1)+' hrs exceeds budget of '+max+' hrs. Reduce hours.'; document.getElementById('btnSubmit').disabled=true; }
+  else{ warn.style.display='none'; if(!hasBusyDates()) document.getElementById('btnSubmit').disabled=false; }
 }
 
-function addTaskFromPicker() {
-  const sel = document.getElementById('subtaskPicker');
-  if (!sel.value) { alert('Pick a subtask first.'); return; }
-  addTaskRow(sel.value, '');
-  sel.value = '';
+function getBudget(){
+  const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
+  if(!f||!t||f>t) return 0;
+  let d=new Date(f),e=new Date(t),n=0;
+  while(d<=e){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}
+  return n*9;
 }
 
-function addCustomTask() {
-  addTaskRow('', '');
+function onDatesChange(){
+  const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
+  const area=document.getElementById('budgetArea');
+  if(!f||!t||f>t){area.innerHTML='';return;}
+  const max=getBudget();
+  const days=max/9;
+  area.innerHTML='<div class="budget-pill ok">'+days+' working day(s) × 9 hrs = <strong>'+max+' hrs</strong> budget</div>';
+  reCalc();
+  checkBusy();
+  loadCal();
 }
 
-function removeTask(id) {
-  document.getElementById(id)?.remove();
-  calcTotal();
-}
-
-function calcTotal() {
-  let total = 0;
-  document.querySelectorAll('.task-hrs-input').forEach(inp => { total += parseFloat(inp.value) || 0; });
-  document.getElementById('totalHrs').textContent = total.toFixed(1);
-  checkBudgetLimit(total);
-}
-
-function checkBudgetLimit(total) {
-  const from = document.getElementById('fromDate').value;
-  const to = document.getElementById('toDate').value;
-  const warn = document.getElementById('budgetWarning');
-  if (!from || !to || from > to) { if(warn) warn.style.display='none'; return; }
-  const days = workingDays(from, to);
-  const maxHrs = days * 9;
-  if (total > maxHrs) {
-    if(warn) { warn.style.display='block'; warn.textContent='⚠ Total ' + total.toFixed(1) + ' hrs exceeds budget of ' + maxHrs + ' hrs (' + days + ' days × 9 hrs). Reduce hours to proceed.'; }
-    document.getElementById('btnSubmit').disabled = true;
-  } else {
-    if(warn) warn.style.display='none';
-    document.getElementById('btnSubmit').disabled = false;
-  }
-}
-
-function calcBudget() {
-  const from = document.getElementById('fromDate').value;
-  const to = document.getElementById('toDate').value;
-  const box = document.getElementById('budgetBox');
-  const lbl = document.getElementById('budgetLabel');
-  if (!from || !to || from > to) { box.style.display = 'none'; return; }
-  const days = workingDays(from, to);
-  const maxHrs = days * 9;
-  box.style.display = 'block';
-  lbl.textContent = days + ' working day(s) × 9 hrs = ' + maxHrs + ' hrs available budget';
-  calcTotal(); // re-check limit
-  checkBusyDates();
-}
-
-function onDatesChanged() {
-  calcBudget();
-  loadCalendar();
-}
-
-function checkBusyDates() {
-  const from = document.getElementById('fromDate').value;
-  const to = document.getElementById('toDate').value;
-  const warn = document.getElementById('busyWarning');
-  if (!from || !to || from > to || !empTaskData) { if(warn) warn.style.display='none'; return; }
-
-  // Check if any working day in the range is fully booked (>=9 hrs)
-  let busyDates = [];
-  let d = new Date(from);
-  const e = new Date(to);
-  while (d <= e) {
-    if (d.getDay() !== 0) { // not Sunday
-      const dateStr = d.toISOString().split('T')[0];
-      if (empTaskData[dateStr] && empTaskData[dateStr].total_hrs >= 9) {
-        busyDates.push(dateStr);
-      }
+// ── Busy check ───────────────────────────────────────────────
+function hasBusyDates(){
+  const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
+  if(!f||!t||f>t) return false;
+  let d=new Date(f),e=new Date(t),busy=[];
+  while(d<=e){
+    if(d.getDay()!==0){
+      const ds=d.toISOString().split('T')[0];
+      if(empData[ds]&&empData[ds].total_hrs>=9) busy.push(ds);
     }
-    d.setDate(d.getDate() + 1);
+    d.setDate(d.getDate()+1);
   }
+  return busy.length>0;
+}
 
-  if (busyDates.length > 0) {
-    warn.style.display = 'block';
-    warn.innerHTML = '⚠ Employee is fully booked (9 hrs) on: <strong>' + busyDates.map(d => {
-      const dt = new Date(d); return dt.toLocaleDateString('en-IN', {day:'numeric',month:'short'});
-    }).join(', ') + '</strong>. Cannot assign tasks on these dates.';
-    document.getElementById('btnSubmit').disabled = true;
+function checkBusy(){
+  const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
+  const warn=document.getElementById('busyWarning');
+  if(!f||!t||f>t||!Object.keys(empData).length){warn.style.display='none';return;}
+  let d=new Date(f),e=new Date(t),busy=[];
+  while(d<=e){
+    if(d.getDay()!==0){
+      const ds=d.toISOString().split('T')[0];
+      if(empData[ds]&&empData[ds].total_hrs>=9) busy.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
+    }
+    d.setDate(d.getDate()+1);
+  }
+  if(busy.length){
+    warn.style.display='block';
+    warn.innerHTML='⚠ Employee is fully booked (9 hrs) on: <strong>'+busy.join(', ')+'</strong>. Choose different dates.';
+    document.getElementById('btnSubmit').disabled=true;
   } else {
-    warn.style.display = 'none';
-    // Re-enable only if budget is also OK
-    calcTotal();
+    warn.style.display='none';
+    reCalc();
   }
 }
 
-function workingDays(f, t) {
-  if (!f || !t || f > t) return 0;
-  let d = new Date(f), e = new Date(t), n = 0;
-  while (d <= e) { if (d.getDay() !== 0) n++; d.setDate(d.getDate() + 1); }
-  return n;
+// ── Employee change ──────────────────────────────────────────
+function onEmpChange(){
+  const v=document.getElementById('empSelect').value;
+  if(v){ loadCal(); } else {
+    document.getElementById('calPlaceholder').style.display='block';
+    document.getElementById('calContainer').style.display='none';
+    empData={};
+  }
 }
-
-function escAttr(str) {
-  const d = document.createElement('div'); d.textContent = str;
-  return d.innerHTML.replace(/"/g, '&quot;');
-}
-
-// Pre-populate from POST if validation failed
-<?php if(!empty($_POST['tasks'])): ?>
-<?php foreach($_POST['tasks'] as $td): ?>
-addTaskRow(<?= json_encode($td['subtask']??'') ?>, <?= json_encode($td['hours']??'') ?>);
-<?php endforeach; ?>
-<?php endif; ?>
 
 // ── Calendar ─────────────────────────────────────────────────
-let calMonth = new Date().getMonth() + 1;
-let calYear = new Date().getFullYear();
-let empTaskData = {};
+function calNav(dir){ calMonth+=dir; if(calMonth>12){calMonth=1;calYear++;} if(calMonth<1){calMonth=12;calYear--;} loadCal(); }
 
-// Listen for employee selection change
-document.querySelector('[name="assigned_to"]').addEventListener('change', function() {
-  if (this.value) {
-    loadCalendar();
-  } else {
-    document.getElementById('calendarPlaceholder').style.display = 'block';
-    document.getElementById('calendarContainer').style.display = 'none';
-    empTaskData = {};
-  }
-});
-
-function changeCalMonth(dir) {
-  calMonth += dir;
-  if (calMonth > 12) { calMonth = 1; calYear++; }
-  if (calMonth < 1) { calMonth = 12; calYear--; }
-  loadCalendar();
+function loadCal(){
+  const emp=document.getElementById('empSelect').value;
+  if(!emp) return;
+  fetch('get_employee_tasks.php?employee_id='+emp+'&month='+calMonth+'&year='+calYear)
+    .then(r=>r.json()).then(data=>{empData=data;renderCal();checkBusy();}).catch(()=>{empData={};renderCal();});
 }
 
-function loadCalendar() {
-  const empId = document.querySelector('[name="assigned_to"]').value;
-  if (!empId) return;
-
-  fetch('get_employee_tasks.php?employee_id=' + empId + '&month=' + calMonth + '&year=' + calYear)
-    .then(r => r.json())
-    .then(data => {
-      empTaskData = data;
-      renderCalendar();
-      checkBusyDates();
-    })
-    .catch(() => { empTaskData = {}; renderCalendar(); });
-}
-
-function renderCalendar() {
-  document.getElementById('calendarPlaceholder').style.display = 'none';
-  document.getElementById('calendarContainer').style.display = 'block';
-
-  const months = ['','January','February','March','April','May','June','July','August','September','October','November','December'];
-  document.getElementById('calMonthLabel').textContent = months[calMonth] + ' ' + calYear;
-
-  const grid = document.getElementById('calGrid');
-  grid.innerHTML = '';
-
-  // Day headers
-  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
-    grid.innerHTML += '<div class="day-header">' + d + '</div>';
-  });
-
-  // First day of month
-  const firstDay = new Date(calYear, calMonth - 1, 1);
-  let startDow = firstDay.getDay(); // 0=Sun
-  startDow = startDow === 0 ? 7 : startDow; // Convert to Mon=1
-
-  const daysInMonth = new Date(calYear, calMonth, 0).getDate();
-
-  // Empty cells before first day
-  for (let i = 1; i < startDow; i++) {
-    grid.innerHTML += '<div class="day-cell empty"></div>';
-  }
-
-  // Day cells
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = calYear + '-' + String(calMonth).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    const dow = new Date(calYear, calMonth - 1, d).getDay();
-    const isSunday = dow === 0;
-    const dayData = empTaskData[dateStr];
-    const totalHrs = dayData ? dayData.total_hrs : 0;
-    const isFull = totalHrs >= 9;
-
-    let cls = 'day-cell';
-    if (isSunday) cls += ' sunday';
-    if (isFull) cls += ' full';
-
-    let content = '<div class="day-num">' + d + '</div>';
-    if (isSunday) {
-      content += '<div style="font-size:9px;color:var(--muted);">Off</div>';
-    } else if (dayData && dayData.tasks.length > 0) {
-      let hrsClass = totalHrs >= 9 ? 'full' : (totalHrs >= 6 ? 'warn' : 'ok');
-      content += '<span class="day-hrs ' + hrsClass + '">' + totalHrs.toFixed(1) + 'h</span>';
-      dayData.tasks.slice(0, 2).forEach(t => {
-        content += '<div class="day-task">' + escAttr(t.project_code) + ': ' + escAttr(t.subtask.substring(0,12)) + '</div>';
-      });
-      if (dayData.tasks.length > 2) content += '<div class="day-task">+' + (dayData.tasks.length-2) + ' more</div>';
+function renderCal(){
+  document.getElementById('calPlaceholder').style.display='none';
+  document.getElementById('calContainer').style.display='block';
+  const ms=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('calLabel').textContent=ms[calMonth]+' '+calYear;
+  const g=document.getElementById('calGrid'); g.innerHTML='';
+  ['M','T','W','T','F','S','S'].forEach(d=>{g.innerHTML+='<div class="dh">'+d+'</div>';});
+  const first=new Date(calYear,calMonth-1,1);
+  let sd=first.getDay(); sd=sd===0?7:sd;
+  const dim=new Date(calYear,calMonth,0).getDate();
+  for(let i=1;i<sd;i++) g.innerHTML+='<div class="dc empty"></div>';
+  for(let d=1;d<=dim;d++){
+    const ds=calYear+'-'+String(calMonth).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const dow=new Date(calYear,calMonth-1,d).getDay();
+    const isSun=dow===0;
+    const dd=empData[ds];
+    const hrs=dd?dd.total_hrs:0;
+    let cls='dc';
+    if(isSun) cls+=' sun';
+    else if(hrs>=9) cls+=' full';
+    else if(hrs>0) cls+=' booked';
+    let html='<div class="dn">'+d+'</div>';
+    if(isSun){ html+='<div style="font-size:8px;color:var(--muted);">Off</div>'; }
+    else if(hrs>0){
+      const hc=hrs>=9?'r':(hrs>=5?'y':'g');
+      html+='<span class="cal-hrs '+hc+'">'+hrs.toFixed(1)+'h</span>';
+      if(dd.tasks&&dd.tasks.length) html+='<div class="cal-task">'+esc(dd.tasks[0].subtask.substring(0,10))+'</div>';
     }
-
-    grid.innerHTML += '<div class="' + cls + '" title="' + dateStr + (totalHrs ? ' — ' + totalHrs.toFixed(1) + ' hrs assigned' : '') + '">' + content + '</div>';
+    g.innerHTML+='<div class="'+cls+'" title="'+ds+(hrs?' — '+hrs.toFixed(1)+'h assigned':'')+'">'+html+'</div>';
   }
 }
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&quot;');}
+
+// Pre-populate tasks from POST
+<?php if(!empty($_POST['tasks'])): ?>
+<?php foreach($_POST['tasks'] as $td): ?>
+addRow(<?= json_encode($td['subtask']??'') ?>,<?= json_encode($td['hours']??'') ?>);
+<?php endforeach; ?>
+<?php endif; ?>
 </script>
 </body>
 </html>
