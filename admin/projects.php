@@ -124,39 +124,42 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
       <table id="pTable">
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Project Name</th>
+            <th>Project</th>
             <th>Client</th>
             <th>Manager</th>
             <th>Priority</th>
-            <th>Start</th>
-            <th>Deadline</th>
-            <th>Total Hrs</th>
-            <th>HR Rate</th>
+            <th>Timeline</th>
+            <th>Hours / Rate</th>
             <th>Status</th>
-            <th style="width:100px;"></th>
+            <th style="width:90px;"></th>
           </tr>
         </thead>
         <tbody>
           <?php if(empty($projects)): ?>
-            <tr class="empty-row"><td colspan="11">No projects yet. <a href="add_project.php" style="color:var(--brand)">Create your first project →</a></td></tr>
+            <tr class="empty-row"><td colspan="8">No projects yet. <a href="add_project.php" style="color:var(--brand)">Create your first project →</a></td></tr>
           <?php else: foreach($projects as $p):
             $overdue = $p['status']==='Active' && $p['deadline_date'] < date('Y-m-d');
           ?>
           <tr class="p-row" data-name="<?= htmlspecialchars(strtolower($p['project_name'].' '.$p['project_code'].' '.($p['client_name']??''))) ?>"
               style="<?= $overdue?'background:#fff8f8;':'' ?>">
-            <td><code style="font-size:12px;background:var(--surface-2);padding:2px 7px;border-radius:5px;color:var(--muted);"><?= htmlspecialchars($p['project_code']) ?></code></td>
             <td>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                <code style="font-size:11px;background:var(--surface-2);padding:1px 6px;border-radius:4px;color:var(--muted);flex-shrink:0;"><?= htmlspecialchars($p['project_code']) ?></code>
+              </div>
               <div class="td-name"><?= htmlspecialchars($p['project_name']) ?></div>
               <?php if($overdue): ?><div style="font-size:11px;color:var(--red);font-weight:600;">⚠ Overdue</div><?php endif; ?>
             </td>
             <td class="text-muted text-sm"><?= htmlspecialchars($p['client_name'] ?: '—') ?></td>
             <td class="text-sm"><?= htmlspecialchars($p['manager_name'] ?: '—') ?></td>
             <td><span class="badge <?= $priorityBadge[$p['priority']]??'badge-gray' ?>"><?= $p['priority'] ?></span></td>
-            <td class="text-sm text-muted"><?= date('d M Y', strtotime($p['start_date'])) ?></td>
-            <td class="text-sm <?= $overdue?'font-semibold':'' ?>" style="<?= $overdue?'color:var(--red);':'' ?>"><?= date('d M Y', strtotime($p['deadline_date'])) ?></td>
-            <td class="font-semibold"><?= number_format($p['total_hours'],1) ?> hrs</td>
-            <td class="text-muted text-sm">₹<?= number_format($p['hr_rate'],2) ?>/hr</td>
+            <td class="text-sm">
+              <div style="color:var(--muted);"><?= date('d M Y', strtotime($p['start_date'])) ?></div>
+              <div style="color:<?= $overdue?'var(--red)':'var(--text-2)' ?>;font-weight:<?= $overdue?'600':'400' ?>;"><?= date('d M Y', strtotime($p['deadline_date'])) ?></div>
+            </td>
+            <td class="text-sm">
+              <div class="font-semibold" style="color:var(--brand);"><?= number_format($p['total_hours'],1) ?> hrs</div>
+              <?php if($p['hr_rate'] > 0): ?><div style="color:var(--muted);">₹<?= number_format($p['hr_rate'],0) ?>/hr</div><?php endif; ?>
+            </td>
             <td><span class="badge <?= $statusBadge[$p['status']]??'badge-gray' ?>"><?= $p['status'] ?></span></td>
             <td>
               <div style="display:flex;gap:6px;">
