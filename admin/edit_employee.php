@@ -121,17 +121,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── Email uniqueness check (exclude current employee) ──
         $newEmail = strtolower(trim($_POST['email'] ?? ''));
+        // Capture current email BEFORE any update (needed for users table sync)
+        $currentEmpEmailStmt = $db->prepare("SELECT email FROM employees WHERE id=?");
+        $currentEmpEmailStmt->execute([$id]);
+        $currentEmpEmail = $currentEmpEmailStmt->fetchColumn() ?: '';
+
         if ($newEmail) {
             $dupEmp = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=? AND id!=?");
             $dupEmp->execute([$newEmail, $id]);
             if ($dupEmp->fetch()) {
-                $_SESSION['flash_error'] = "Email '$newEmail' is already registered to another employee.";
+                $_SESSION['flash_error'] = "Work email '$newEmail' is already registered to another employee.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+            // Also check users table — exclude the user account linked to THIS employee
+            $dupUser = $db->prepare("SELECT id FROM users WHERE LOWER(email)=? AND LOWER(email)!=?");
+            $dupUser->execute([$newEmail, strtolower($currentEmpEmail)]);
+            if ($dupUser->fetch()) {
+                $_SESSION['flash_error'] = "Work email '$newEmail' is already in use by another user account.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+        }
+
+        // ── Personal email uniqueness check (exclude current employee) ──
+        $personalEmail = strtolower(trim($_POST['personal_email'] ?? ''));
+        if ($personalEmail) {
+            $dupPE = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=? AND id!=?");
+            $dupPE->execute([$personalEmail, $id]);
+            if ($dupPE->fetch()) {
+                $_SESSION['flash_error'] = "Personal email '$personalEmail' is already registered to another employee.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+            if ($personalEmail === $newEmail) {
+                $_SESSION['flash_error'] = "Personal email must be different from the work email.";
                 header("Location: edit_employee.php?id=$id"); exit;
             }
         }
 
         $params[] = $id;
         $db->prepare("UPDATE employees SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+
+        // ── Sync users.email if work email changed ─────────────
+        $updatedEmail = trim($_POST['email'] ?? '');
+        if ($updatedEmail && $currentEmpEmail && strtolower($currentEmpEmail) !== strtolower($updatedEmail)) {
+            $db->prepare("UPDATE users SET email=? WHERE LOWER(email)=?")
+               ->execute([$updatedEmail, strtolower($currentEmpEmail)]);
+        }
 
         // ── Sync users.manager_id when department changes ──────
         // Find the new department_id from POST

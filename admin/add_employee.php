@@ -54,14 +54,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dupCheck = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=?");
                 $dupCheck->execute([$newEmail]);
                 if ($dupCheck->fetch()) {
-                    $_SESSION['flash_error'] = "Email '$newEmail' is already registered to another employee.";
+                    $_SESSION['flash_error'] = "Work email '$newEmail' is already registered to another employee.";
                     header("Location: add_employee.php"); exit;
                 }
                 // Also check users table
                 $dupUser = $db->prepare("SELECT id FROM users WHERE LOWER(email)=?");
                 $dupUser->execute([$newEmail]);
                 if ($dupUser->fetch()) {
-                    $_SESSION['flash_error'] = "Email '$newEmail' is already in use by an existing user account.";
+                    $_SESSION['flash_error'] = "Work email '$newEmail' is already in use by an existing user account.";
+                    header("Location: add_employee.php"); exit;
+                }
+            }
+
+            // ── Personal email uniqueness check ─────────────
+            $personalEmail = strtolower(trim($_POST['personal_email'] ?? ''));
+            if ($personalEmail) {
+                // Must not match another employee's personal_email
+                $dupPE = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=?");
+                $dupPE->execute([$personalEmail]);
+                if ($dupPE->fetch()) {
+                    $_SESSION['flash_error'] = "Personal email '$personalEmail' is already registered to another employee.";
+                    header("Location: add_employee.php"); exit;
+                }
+                // Must not be the same as the work email being added
+                if ($personalEmail === $newEmail) {
+                    $_SESSION['flash_error'] = "Personal email must be different from the work email.";
                     header("Location: add_employee.php"); exit;
                 }
             }
@@ -187,7 +204,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $dupChk = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=?");
                                     $dupChk->execute([strtolower($rowEmail)]);
                                     if ($dupChk->fetch()) {
-                                        $rowErrors[] = "Row $rowNum: email '$rowEmail' already exists — skipped.";
+                                        $rowErrors[] = "Row $rowNum: work email '$rowEmail' already exists — skipped.";
+                                        continue;
+                                    }
+                                }
+                                // Check personal email uniqueness
+                                $rowPE = $row['personal_email'] ?? '';
+                                if ($rowPE) {
+                                    $dupPE = $db->prepare("SELECT id FROM employees WHERE LOWER(personal_email)=?");
+                                    $dupPE->execute([strtolower($rowPE)]);
+                                    if ($dupPE->fetch()) {
+                                        $rowErrors[] = "Row $rowNum: personal email '$rowPE' already exists — skipped.";
+                                        continue;
+                                    }
+                                    if (strtolower($rowPE) === strtolower($rowEmail)) {
+                                        $rowErrors[] = "Row $rowNum: personal email must differ from work email — skipped.";
                                         continue;
                                     }
                                 }
