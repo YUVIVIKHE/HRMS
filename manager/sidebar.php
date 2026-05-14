@@ -62,6 +62,10 @@
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Attendance
       </a>
+      <a href="my_acl.php" class="<?= $mp==='my_acl.php'?'active':'' ?>">
+        <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+        My ACL
+      </a>
     </nav>
   </div>
 
