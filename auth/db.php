@@ -139,9 +139,29 @@ function getDB(): PDO {
             // Add escalation columns if missing (for existing installs)
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated` TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
             try { $pdo->exec("ALTER TABLE `leave_applications` ADD COLUMN `escalated_at` DATETIME NULL"); } catch(Exception $e) {}
+            // Task assignments table
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `task_assignments` (
+              `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `project_id`   INT UNSIGNED NOT NULL,
+              `assigned_to`  INT UNSIGNED NOT NULL COMMENT 'user_id of employee',
+              `assigned_by`  INT UNSIGNED NOT NULL COMMENT 'user_id of manager',
+              `subtask`      VARCHAR(100) NOT NULL,
+              `from_date`    DATE         NOT NULL,
+              `to_date`      DATE         NOT NULL,
+              `hours`        DECIMAL(5,1) NOT NULL COMMENT 'Total hours for this task',
+              `status`       ENUM('Pending','In Progress','Completed','On Hold') NOT NULL DEFAULT 'Pending',
+              `notes`        TEXT         NULL,
+              `created_at`   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at`   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              INDEX `idx_ta_project`  (`project_id`),
+              INDEX `idx_ta_assigned` (`assigned_to`),
+              CONSTRAINT `fk_ta_project`  FOREIGN KEY (`project_id`)  REFERENCES `projects`(`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_ta_assignee` FOREIGN KEY (`assigned_to`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_ta_assigner` FOREIGN KEY (`assigned_by`) REFERENCES `users`(`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
             // Projects table
-            $pdo->exec("CREATE TABLE IF NOT EXISTS `projects` (
-              `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `projects` (              `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
               `project_code`  VARCHAR(20)   NOT NULL UNIQUE,
               `project_name`  VARCHAR(150)  NOT NULL,
               `client_name`   VARCHAR(150)  NULL,
