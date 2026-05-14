@@ -9,6 +9,7 @@ if (!$id) { header("Location: payslips.php"); exit; }
 $ps = $db->prepare("
     SELECT ps.*, u.name AS emp_name, u.email AS emp_email,
            e.employee_id AS emp_code, e.job_title, e.date_of_joining, e.location, e.base_location,
+           e.pan, e.uan_number, e.pf_account_number, e.esi_number, e.account_number, e.ifsc_code,
            d.name AS dept_name
     FROM payslips ps
     JOIN users u ON ps.user_id = u.id
@@ -93,12 +94,12 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;padding:20px;}
 
     <!-- Employee Info -->
     <table class="info-table">
-      <tr><td class="lbl">Name</td><td class="val"><?= htmlspecialchars($ps['emp_name']) ?></td><td class="lbl">PAN No.</td><td class="val"></td></tr>
-      <tr><td class="lbl">Employee Code</td><td class="val"><?= htmlspecialchars($ps['emp_code'] ?: '') ?></td><td class="lbl">ESI No.</td><td class="val"></td></tr>
-      <tr><td class="lbl">Designation</td><td class="val"><?= htmlspecialchars($ps['job_title'] ?: '') ?></td><td class="lbl">PF No.</td><td class="val"></td></tr>
-      <tr><td class="lbl">Bank Name</td><td class="val"></td><td class="lbl">Bank Account No.</td><td class="val"></td></tr>
+      <tr><td class="lbl">Name</td><td class="val"><?= htmlspecialchars($ps['emp_name']) ?></td><td class="lbl">PAN No.</td><td class="val"><?= htmlspecialchars($ps['pan'] ?? '') ?></td></tr>
+      <tr><td class="lbl">Employee Code</td><td class="val"><?= htmlspecialchars($ps['emp_code'] ?: '') ?></td><td class="lbl">ESI No.</td><td class="val"><?= htmlspecialchars($ps['esi_number'] ?? '') ?></td></tr>
+      <tr><td class="lbl">Designation</td><td class="val"><?= htmlspecialchars($ps['job_title'] ?: '') ?></td><td class="lbl">PF No.</td><td class="val"><?= htmlspecialchars($ps['pf_account_number'] ?? '') ?></td></tr>
+      <tr><td class="lbl">Bank Name</td><td class="val"><?= htmlspecialchars($ps['ifsc_code'] ?? '') ?></td><td class="lbl">Bank Account No.</td><td class="val"><?= htmlspecialchars($ps['account_number'] ?? '') ?></td></tr>
       <tr><td class="lbl">Department</td><td class="val"><?= htmlspecialchars($ps['dept_name'] ?: '') ?></td><td class="lbl">Location</td><td class="val"><?= htmlspecialchars($ps['location'] ?? $ps['base_location'] ?? '') ?></td></tr>
-      <tr><td class="lbl">UAN NO.</td><td class="val" colspan="3"></td></tr>
+      <tr><td class="lbl">UAN NO.</td><td class="val" colspan="3"><?= htmlspecialchars($ps['uan_number'] ?? '') ?></td></tr>
     </table>
 
     <!-- Earnings & Deductions side by side -->

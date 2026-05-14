@@ -12,6 +12,9 @@ $emp = $db->prepare("SELECT e.*, u.name AS full_name, u.id AS uid, d.name AS dep
 $emp->execute([$userId]); $emp = $emp->fetch();
 if (!$emp) { header("Location: payroll.php"); exit; }
 
+// Auto-fetch gross salary from employee table
+$grossFromEmp = (float)($emp['gross_salary'] ?? 0);
+
 $salary = $db->prepare("SELECT * FROM salary_structures WHERE user_id=?");
 $salary->execute([$userId]); $salary = $salary->fetch();
 
@@ -253,7 +256,10 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
           <div class="card-body">
             <div class="form-group" style="margin-bottom:14px;">
               <label>Gross Salary (Annual CTC) <span class="req">*</span></label>
-              <input type="number" name="gross_salary" id="grossInput" class="form-control" value="<?= $s['gross_salary'] ?? 0 ?>" required min="0" step="1" oninput="calcAuto()">
+              <input type="number" name="gross_salary" id="grossInput" class="form-control" value="<?= $s['gross_salary'] ?? $grossFromEmp ?>" required min="0" step="1" oninput="calcAuto()">
+              <?php if($grossFromEmp > 0): ?>
+              <span style="font-size:11px;color:var(--green-text);margin-top:4px;display:block;">Auto-fetched from employee record: ₹<?= number_format($grossFromEmp,0) ?></span>
+              <?php endif; ?>
             </div>
             <div style="background:var(--surface-2);border-radius:8px;padding:12px;margin-bottom:14px;">
               <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Auto-calculated:</div>
