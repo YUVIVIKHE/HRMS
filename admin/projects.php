@@ -126,10 +126,7 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
 
     <!-- Filters -->
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-      <a href="projects.php" class="btn btn-sm <?= !$filterStatus?'btn-primary':'btn-ghost' ?>">All (<?= $total ?>)</a>
-      <?php foreach(array_keys($counts) as $s): ?>
-        <a href="projects.php?status=<?= urlencode($s) ?>" class="btn btn-sm <?= $filterStatus===$s?'btn-primary':'btn-ghost' ?>"><?= $s ?></a>
-      <?php endforeach; ?>
+      <span style="font-size:13px;font-weight:600;color:var(--text);">All Projects (<?= $total ?>)</span>
       <div style="margin-left:auto;">
         <div class="search-box">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -152,13 +149,12 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
             <th>Priority</th>
             <th>Timeline</th>
             <th>Hours / Rate</th>
-            <th>Status</th>
             <th style="width:90px;"></th>
           </tr>
         </thead>
         <tbody>
           <?php if(empty($projects)): ?>
-            <tr class="empty-row"><td colspan="8">No projects yet. <a href="add_project.php" style="color:var(--brand)">Create your first project →</a></td></tr>
+            <tr class="empty-row"><td colspan="7">No projects yet. <a href="add_project.php" style="color:var(--brand)">Create your first project →</a></td></tr>
           <?php else: foreach($projects as $p):
             $overdue = $p['status']==='Active' && $p['deadline_date'] < date('Y-m-d');
           ?>
@@ -182,7 +178,6 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
               <div class="font-semibold" style="color:var(--brand);"><?= number_format($p['total_hours'],1) ?> hrs</div>
               <?php if($p['hr_rate'] > 0): ?><div style="color:var(--muted);">₹<?= number_format($p['hr_rate'],0) ?>/hr</div><?php endif; ?>
             </td>
-            <td><span class="badge <?= $statusBadge[$p['status']]??'badge-gray' ?>"><?= $p['status'] ?></span></td>
             <td>
               <div style="display:flex;gap:6px;">
                 <a href="add_project.php?id=<?= $p['id'] ?>" class="btn btn-ghost btn-sm">Edit</a>

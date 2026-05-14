@@ -177,14 +177,7 @@ $pageTitle  = $isEdit ? 'Edit Project' : 'New Project';
               </select>
             </div>
 
-            <div class="form-group">
-              <label>Status</label>
-              <select name="status" class="form-control">
-                <?php foreach(['Planning','Active','On Hold','Completed','Cancelled'] as $s): ?>
-                  <option <?= ($project['status']??'Planning')===$s?'selected':'' ?>><?= $s ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
+            <input type="hidden" name="status" value="<?= htmlspecialchars($project['status']??'Active') ?>">
 
           </div>
         </div>
