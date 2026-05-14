@@ -18,6 +18,10 @@
         <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
         My Projects
       </a>
+      <a href="tasks.php" class="<?= $mp==='tasks.php'?'active':'' ?>">
+        <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Tasks
+      </a>
     </nav>
   </div>
 
@@ -36,7 +40,6 @@
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         Leave Requests
       </a>
-      <!-- Regularizations with sub-menu -->
       <?php $regPages = ['regularizations.php','my_regularizations.php']; $regOpen = in_array($mp,$regPages); ?>
       <a href="#" class="has-sub <?= $regOpen?'open':'' ?>" onclick="toggleSub('regSub',this);return false;">
         <span style="display:flex;align-items:center;gap:10px;">
@@ -59,10 +62,7 @@
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Attendance
       </a>
-      <a href="tasks.php" class="<?= $mp==='tasks.php'?'active':'' ?>">
-        <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Tasks
-      </a>    </nav>
+    </nav>
   </div>
 
   <div class="sidebar-section">
