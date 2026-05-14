@@ -155,19 +155,21 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
       $monthlyESI = round(($s['basic_salary'] * $s['esi_employee_rate']) / 100, 2);
       $customTotal = 0; foreach ($customDed as $cd) $customTotal += (float)$cd['amount'];
       $totalDeductions = $monthlyIT + $monthlyPT + $monthlyEPF + $monthlyESI + $customTotal;
-      $netPayable = $totalEarnings - $totalDeductions;
       // Employer contributions
       $empEPS = round(($s['basic_salary'] * $s['eps_employer_rate']) / 100, 2);
       $empEDLI = round(($s['basic_salary'] * $s['edli_employer_rate']) / 100, 2);
       $empAdmin = round(($s['basic_salary'] * $s['epf_admin_rate']) / 100, 2);
       $empESI = round(($s['basic_salary'] * $s['esi_employer_rate']) / 100, 2);
+      $totalEmployerCost = $empEPS + $empEDLI + $empAdmin + $empESI;
+      $netPayable = $totalEarnings - $totalDeductions - $totalEmployerCost;
     ?>
     <!-- Summary -->
-    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
       <div class="stat-card"><div class="stat-body"><div class="stat-value" style="color:var(--brand);">₹<?= number_format($s['gross_salary']/12,0) ?></div><div class="stat-label">Monthly CTC</div></div></div>
       <div class="stat-card"><div class="stat-body"><div class="stat-value" style="color:var(--green-text);">₹<?= number_format($totalEarnings,0) ?></div><div class="stat-label">Total Earnings</div></div></div>
-      <div class="stat-card"><div class="stat-body"><div class="stat-value" style="color:var(--red);">₹<?= number_format($totalDeductions,0) ?></div><div class="stat-label">Total Deductions</div></div></div>
-      <div class="stat-card" style="border-color:var(--brand);background:var(--brand-light);"><div class="stat-body"><div class="stat-value" style="color:var(--brand);font-size:22px;">₹<?= number_format($netPayable,0) ?></div><div class="stat-label" style="font-weight:700;">Net Payable</div></div></div>
+      <div class="stat-card"><div class="stat-body"><div class="stat-value" style="color:var(--red);">₹<?= number_format($totalDeductions,0) ?></div><div class="stat-label">Emp. Deductions</div></div></div>
+      <div class="stat-card"><div class="stat-body"><div class="stat-value" style="color:var(--yellow);">₹<?= number_format($totalEmployerCost,0) ?></div><div class="stat-label">Employer Cost</div></div></div>
+      <div class="stat-card" style="border-color:var(--brand);background:var(--brand-light);"><div class="stat-body"><div class="stat-value" style="color:var(--brand);font-size:20px;">₹<?= number_format($netPayable,0) ?></div><div class="stat-label" style="font-weight:700;">Net Payable</div></div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
@@ -201,18 +203,27 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
             <tr><td style="padding:7px 0;color:var(--muted);"><?= htmlspecialchars($cd['name']) ?></td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($cd['amount'],0) ?></td></tr>
             <?php endforeach; ?>
             <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;">Total Deductions</td><td style="text-align:right;font-weight:800;color:var(--red);">₹<?= number_format($totalDeductions,0) ?></td></tr>
-            <tr style="background:var(--brand-light);"><td style="padding:12px 8px;font-weight:800;color:var(--brand);">NET PAYABLE</td><td style="text-align:right;font-weight:800;color:var(--brand);font-size:16px;">₹<?= number_format($netPayable,0) ?></td></tr>
           </table></div>
         </div>
-        <div class="card">
+        <div class="card" style="margin-bottom:16px;">
           <div class="card-header"><h2>Employer Contributions (Monthly)</h2></div>
           <div class="card-body"><table style="width:100%;font-size:13px;">
             <tr><td style="padding:7px 0;color:var(--muted);">EPS Employer (<?= $s['eps_employer_rate'] ?>%)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($empEPS,0) ?></td></tr>
             <tr><td style="padding:7px 0;color:var(--muted);">EDLI Employer (<?= $s['edli_employer_rate'] ?>%)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($empEDLI,0) ?></td></tr>
             <tr><td style="padding:7px 0;color:var(--muted);">EPF Admin (<?= $s['epf_admin_rate'] ?>%)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($empAdmin,0) ?></td></tr>
             <tr><td style="padding:7px 0;color:var(--muted);">ESI Employer (<?= $s['esi_employer_rate'] ?>%)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($empESI,0) ?></td></tr>
-            <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;">Total Employer Cost</td><td style="text-align:right;font-weight:800;color:var(--brand);">₹<?= number_format($empEPS+$empEDLI+$empAdmin+$empESI,0) ?></td></tr>
+            <tr style="border-top:2px solid var(--border);"><td style="padding:10px 0;font-weight:700;">Total Employer Cost</td><td style="text-align:right;font-weight:800;color:var(--yellow);">₹<?= number_format($totalEmployerCost,0) ?></td></tr>
           </table></div>
+        </div>
+        <div class="card" style="background:var(--brand-light);border-color:var(--brand);">
+          <div class="card-body" style="padding:20px;">
+            <table style="width:100%;font-size:14px;">
+              <tr><td style="color:var(--muted);">Total Earnings</td><td style="text-align:right;font-weight:700;color:var(--green-text);">₹<?= number_format($totalEarnings,0) ?></td></tr>
+              <tr><td style="color:var(--muted);">− Employee Deductions</td><td style="text-align:right;font-weight:700;color:var(--red);">₹<?= number_format($totalDeductions,0) ?></td></tr>
+              <tr><td style="color:var(--muted);">− Employer Contributions</td><td style="text-align:right;font-weight:700;color:var(--yellow);">₹<?= number_format($totalEmployerCost,0) ?></td></tr>
+              <tr style="border-top:2px solid var(--brand);"><td style="padding-top:12px;font-weight:800;color:var(--brand);font-size:16px;">NET PAYABLE</td><td style="text-align:right;padding-top:12px;font-weight:800;color:var(--brand);font-size:20px;">₹<?= number_format($netPayable,0) ?></td></tr>
+            </table>
+          </div>
         </div>
       </div>
     </div>
