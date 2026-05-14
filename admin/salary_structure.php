@@ -39,52 +39,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
     $hra = round($basic / 2, 2);
     $incomeTax = calcIncomeTax($gross);
 
-    $data = [
-        'user_id' => $userId,
-        'employee_id' => $emp['id'],
-        'gross_salary' => $gross,
-        'basic_salary' => $basic,
-        'hra' => $hra,
-        'special_allowance' => (float)($_POST['special_allowance'] ?? 0),
-        'conveyance' => (float)($_POST['conveyance'] ?? 0),
-        'education_allowance' => (float)($_POST['education_allowance'] ?? 0),
-        'lta' => (float)($_POST['lta'] ?? 0),
-        'mediclaim_insurance' => (float)($_POST['mediclaim_insurance'] ?? 0),
-        'medical_reimbursement' => (float)($_POST['medical_reimbursement'] ?? 0),
-        'mobile_internet' => (float)($_POST['mobile_internet'] ?? 0),
-        'personal_allowance' => (float)($_POST['personal_allowance'] ?? 0),
-        'bonus' => (float)($_POST['bonus'] ?? 0),
-        'income_tax_annual' => $incomeTax,
-        'professional_tax' => 2500,
-        'epf_employee_rate' => (float)($_POST['epf_employee_rate'] ?? 3.67),
-        'eps_employer_rate' => (float)($_POST['eps_employer_rate'] ?? 8.33),
-        'edli_employer_rate' => (float)($_POST['edli_employer_rate'] ?? 0.50),
-        'epf_admin_rate' => (float)($_POST['epf_admin_rate'] ?? 0.50),
-        'esi_employee_rate' => (float)($_POST['esi_employee_rate'] ?? 0.75),
-        'esi_employer_rate' => (float)($_POST['esi_employer_rate'] ?? 3.25),
-        'tax_regime' => in_array($_POST['tax_regime']??'',['old','new']) ? $_POST['tax_regime'] : 'new',
-    ];
-
-    $customDed = [];
+    $customDedPost = [];
     if (!empty($_POST['custom_ded_name'])) {
         foreach ($_POST['custom_ded_name'] as $i => $name) {
             $name = trim($name); $amt = (float)($_POST['custom_ded_amount'][$i] ?? 0);
-            if ($name && $amt > 0) $customDed[] = ['name' => $name, 'amount' => $amt];
+            if ($name && $amt > 0) $customDedPost[] = ['name' => $name, 'amount' => $amt];
         }
     }
-    $data['custom_deductions'] = json_encode($customDed);
 
-    if ($salary) {
-        $sets = []; $vals = [];
-        foreach ($data as $k => $v) { if ($k !== 'user_id' && $k !== 'employee_id') { $sets[] = "$k=?"; $vals[] = $v; } }
-        $vals[] = $salary['id'];
-        $db->prepare("UPDATE salary_structures SET " . implode(',', $sets) . " WHERE id=?")->execute($vals);
-    } else {
-        $cols = implode(',', array_keys($data));
-        $phs = implode(',', array_fill(0, count($data), '?'));
-        $db->prepare("INSERT INTO salary_structures ($cols) VALUES ($phs)")->execute(array_values($data));
+    try {
+        if ($salary) {
+            $db->prepare("UPDATE salary_structures SET
+                gross_salary=?, basic_salary=?, hra=?, special_allowance=?, conveyance=?,
+                education_allowance=?, lta=?, mediclaim_insurance=?, medical_reimbursement=?,
+                mobile_internet=?, personal_allowance=?, bonus=?, income_tax_annual=?,
+                professional_tax=?, epf_employee_rate=?, eps_employer_rate=?, edli_employer_rate=?,
+                epf_admin_rate=?, esi_employee_rate=?, esi_employer_rate=?, tax_regime=?, custom_deductions=?
+                WHERE id=?")->execute([
+                $gross, $basic, $hra,
+                (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
+                (float)($_POST['education_allowance'] ?? 0), (float)($_POST['lta'] ?? 0),
+                (float)($_POST['mediclaim_insurance'] ?? 0), (float)($_POST['medical_reimbursement'] ?? 0),
+                (float)($_POST['mobile_internet'] ?? 0), (float)($_POST['personal_allowance'] ?? 0),
+                (float)($_POST['bonus'] ?? 0), $incomeTax, 2500,
+                (float)($_POST['epf_employee_rate'] ?? 3.67), (float)($_POST['eps_employer_rate'] ?? 8.33),
+                (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
+                (float)($_POST['esi_employee_rate'] ?? 0.75), (float)($_POST['esi_employer_rate'] ?? 3.25),
+                in_array($_POST['tax_regime']??'',['old','new']) ? $_POST['tax_regime'] : 'new',
+                json_encode($customDedPost),
+                $salary['id']
+            ]);
+        } else {
+            $db->prepare("INSERT INTO salary_structures
+                (user_id, employee_id, gross_salary, basic_salary, hra, special_allowance, conveyance,
+                education_allowance, lta, mediclaim_insurance, medical_reimbursement,
+                mobile_internet, personal_allowance, bonus, income_tax_annual,
+                professional_tax, epf_employee_rate, eps_employer_rate, edli_employer_rate,
+                epf_admin_rate, esi_employee_rate, esi_employer_rate, tax_regime, custom_deductions)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
+                $userId, $emp['id'], $gross, $basic, $hra,
+                (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
+                (float)($_POST['education_allowance'] ?? 0), (float)($_POST['lta'] ?? 0),
+                (float)($_POST['mediclaim_insurance'] ?? 0), (float)($_POST['medical_reimbursement'] ?? 0),
+                (float)($_POST['mobile_internet'] ?? 0), (float)($_POST['personal_allowance'] ?? 0),
+                (float)($_POST['bonus'] ?? 0), $incomeTax, 2500,
+                (float)($_POST['epf_employee_rate'] ?? 3.67), (float)($_POST['eps_employer_rate'] ?? 8.33),
+                (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
+                (float)($_POST['esi_employee_rate'] ?? 0.75), (float)($_POST['esi_employer_rate'] ?? 3.25),
+                in_array($_POST['tax_regime']??'',['old','new']) ? $_POST['tax_regime'] : 'new',
+                json_encode($customDedPost)
+            ]);
+        }
+        $_SESSION['flash_success'] = "Salary structure saved.";
+    } catch (PDOException $e) {
+        $_SESSION['flash_error'] = "Database error: " . $e->getMessage();
     }
-    $_SESSION['flash_success'] = "Salary structure saved.";
     header("Location: salary_structure.php?user_id=$userId"); exit;
 }
 
