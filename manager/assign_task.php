@@ -147,7 +147,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
 .cal-grid .dh{background:var(--surface-2);text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:5px 2px;}
 .cal-grid .dc{background:var(--surface);min-height:44px;padding:3px;font-size:10px;position:relative;}
 .cal-grid .dc.empty{background:var(--surface-2);}
-.cal-grid .dc.sun{background:#fef2f2;}
+.cal-grid .dc.sun{background:#fef2f2;border-left:2px solid #fca5a5;}
+.cal-grid .dc.holiday{background:#fffbeb;border-left:2px solid #f59e0b;}
+.cal-grid .dc.leave{background:#f3e8ff;border-left:2px solid #a855f7;}
 .cal-grid .dc .dn{font-weight:700;font-size:11px;color:var(--text);}
 .cal-grid .dc.full{background:#fef3c7;}
 .cal-grid .dc.full .dn{color:#d97706;}
@@ -310,10 +312,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
                   </div>
                   <div class="cal-grid" id="calGrid"></div>
                 </div>
-                <div style="margin-top:8px;font-size:10.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;">
+                <div style="margin-top:8px;font-size:10.5px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;">
                   <span><span class="cal-hrs g">●</span> Available</span>
                   <span><span class="cal-hrs y">●</span> Partial</span>
-                  <span><span class="cal-hrs r">●</span> Full (9h)</span>
+                  <span><span class="cal-hrs r">●</span> Full</span>
+                  <span style="color:#ef4444;">■ Weekend</span>
+                  <span style="color:#f59e0b;">■ Holiday</span>
+                  <span style="color:#a855f7;">■ Leave</span>
                 </div>
               </div>
             </div>
@@ -527,13 +532,13 @@ function renderCal(){
 
     if(isSat||isSun){
       cls+=' sun';
-      html+='<div style="font-size:8px;color:#ef4444;font-weight:600;">'+(isSat?'Sat':'Sun')+'</div>';
+      html+='<div style="font-size:8px;color:#ef4444;font-weight:700;">'+(isSat?'Saturday':'Sunday')+'</div>';
     } else if(isHoliday){
-      cls+=' sun';
-      html+='<div style="font-size:8px;color:#d97706;font-weight:600;">🎉 '+esc(String(isHoliday).substring(0,8))+'</div>';
+      cls+=' holiday';
+      html+='<div style="font-size:8px;color:#d97706;font-weight:700;">🎉 '+esc(String(isHoliday).substring(0,12))+'</div>';
     } else if(isLeave){
-      cls+=' sun';
-      html+='<div style="font-size:8px;color:#7c3aed;font-weight:600;">🏖 '+esc(String(isLeave).substring(0,8))+'</div>';
+      cls+=' leave';
+      html+='<div style="font-size:8px;color:#7c3aed;font-weight:700;">🏖 '+esc(String(isLeave).substring(0,10))+'</div>';
     } else if(hrs>=9){
       cls+=' full';
       html+='<span class="cal-hrs r">'+hrs.toFixed(1)+'h</span>';
