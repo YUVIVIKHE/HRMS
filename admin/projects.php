@@ -91,15 +91,37 @@ $statusBadge   = ['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'b
     </div>
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
-      <?php foreach(['Planning'=>'badge-gray','Active'=>'badge-green','On Hold'=>'badge-yellow','Completed'=>'badge-blue','Cancelled'=>'badge-red'] as $s=>$b): ?>
-      <a href="projects.php?status=<?= urlencode($s) ?>" style="text-decoration:none;">
-        <div class="stat-card" style="<?= $filterStatus===$s?'border-color:var(--brand);box-shadow:0 0 0 2px var(--brand-light);':'' ?>">
-          <div class="stat-body"><div class="stat-value"><?= $counts[$s] ?></div><div class="stat-label"><?= $s ?></div></div>
-          <span class="badge <?= $b ?>" style="align-self:flex-start;"><?= $s ?></span>
+    <?php
+      $deadlinePassed = (int)$db->query("SELECT COUNT(*) FROM projects WHERE deadline_date < CURDATE() AND status NOT IN ('Completed','Cancelled')")->fetchColumn();
+    ?>
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
+          <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
         </div>
-      </a>
-      <?php endforeach; ?>
+        <div class="stat-body">
+          <div class="stat-value"><?= $total ?></div>
+          <div class="stat-label">Total Projects</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value"><?= $deadlinePassed ?></div>
+          <div class="stat-label">Deadline Passed</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--green-bg);color:var(--green);">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value"><?= $counts['Completed'] ?></div>
+          <div class="stat-label">Completed</div>
+        </div>
+      </div>
     </div>
 
     <!-- Filters -->
