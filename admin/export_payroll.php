@@ -1,26 +1,10 @@
 <?php
-require_once __DIR__ . '/../auth/guard.php';
-require_once __DIR__ . '/../auth/db.php';
-
-// Error handling
-ini_set('display_errors', 0);
+ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-try {
-    require_once __DIR__ . '/../vendor/autoload.php';
-} catch (Exception $e) {
-    $_SESSION['flash_error'] = "PhpSpreadsheet not installed. Run: composer install";
-    header("Location: payroll.php"); exit;
-}
-
+require_once __DIR__ . '/../auth/guard.php';
+require_once __DIR__ . '/../auth/db.php';
 guardRole('admin');
-
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 $db = getDB();
 
@@ -31,7 +15,7 @@ $userIds   = trim($_POST['user_ids'] ?? '');
 
 if ($monthFrom > $monthTo) { $tmp = $monthFrom; $monthFrom = $monthTo; $monthTo = $tmp; }
 
-$rangeLabel = date('M', mktime(0,0,0,$monthFrom,1)) . '-' . date('M', mktime(0,0,0,$monthTo,1)) . ' ' . $year;
+$rangeLabel = date('M', mktime(0,0,0,$monthFrom,1)) . '_to_' . date('M', mktime(0,0,0,$monthTo,1)) . '_' . $year;
 
 // Build query
 $where = "1=1";
@@ -74,91 +58,49 @@ foreach ($data as $row) {
     }
 }
 
-// Helper to get cell reference
-function cell($col, $row) {
-    return Coordinate::stringFromColumnIndex($col) . $row;
+// Output as CSV (works everywhere, no dependencies)
+$filename = "Salary_Structure_" . $rangeLabel . ".csv";
+header('Content-Type: text/csv; charset=utf-8');
+header('Content-Disposition: attachment; filename="' . $filename . '"');
+header('Cache-Control: max-age=0');
+
+$output = fopen('php://output', 'w');
+// BOM for Excel to recognize UTF-8
+fwrite($output, "\xEF\xBB\xBF");
+
+// Title row
+fputcsv($output, ['SALARY STRUCTURE REPORT - ' . strtoupper(str_replace('_', ' ', $rangeLabel))]);
+fputcsv($output, []); // blank row
+
+// Headers
+$headers = [
+    '#', 'Employee Name', 'Emp ID', 'Email', 'Department', 'Designation',
+    'Gross Salary (Annual)', 'Monthly CTC',
+    'Basic Salary', 'HRA', 'Special Allowance', 'Conveyance',
+    'Education Allowance', 'LTA', 'Mediclaim Insurance',
+    'Medical Reimbursement', 'Mobile & Internet', 'Personal Allowance',
+    'Bonus (Yearly)', 'TOTAL EARNINGS',
+    'Professional Tax', 'Tax Regime', 'ESI Rate (%)', 'PF Rate (%)',
+    'ESI Amount', 'PF Amount',
+];
+foreach ($allCustomDedNames as $cdName) {
+    $headers[] = $cdName;
+}
+$headers[] = 'TOTAL DEDUCTIONS';
+$headers[] = 'NET PAYABLE';
+
+// Monthly columns
+for ($m = $monthFrom; $m <= $monthTo; $m++) {
+    $headers[] = date('M', mktime(0,0,0,$m,1)) . ' ' . $year . ' Net';
 }
 
-try {
+fputcsv($output, $headers);
 
-// Create spreadsheet
-$spreadsheet = new Spreadsheet();
-$sheet = $spreadsheet->getActiveSheet();
-$sheet->setTitle('Salary Structure');
-
-// ── Title ────────────────────────────────────────────────────
-$sheet->setCellValue('A1', 'SALARY STRUCTURE REPORT — ' . strtoupper($rangeLabel));
-$sheet->mergeCells('A1:F1');
-$sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14)->getColor()->setRGB('4F46E5');
-$sheet->getRowDimension(1)->setRowHeight(28);
-
-// ── Build Headers (Row 3) ────────────────────────────────────
-$col = 1;
-$row = 3;
-
-$allHeaders = ['#', 'Employee Name', 'Emp ID', 'Email', 'Department', 'Designation'];
-$infoEndCol = count($allHeaders);
-
-$earningHeaders = ['Gross (Annual)', 'Monthly CTC', 'Basic Salary', 'HRA', 'Special Allow.', 'Conveyance', 'Education Allow.', 'LTA', 'Mediclaim', 'Medical Reimb.', 'Mobile & Internet', 'Personal Allow.', 'Bonus (Yearly)', 'Total Earnings'];
-$earningStartCol = $infoEndCol + 1;
-$earningEndCol = $earningStartCol + count($earningHeaders) - 1;
-
-$deductionHeaders = ['Prof. Tax', 'Tax Regime', 'ESI (%)', 'PF (%)', 'ESI Amount', 'PF Amount'];
-foreach ($allCustomDedNames as $cdName) $deductionHeaders[] = $cdName;
-$deductionHeaders[] = 'Total Deductions';
-$dedStartCol = $earningEndCol + 1;
-$dedEndCol = $dedStartCol + count($deductionHeaders) - 1;
-
-$netCol = $dedEndCol + 1;
-$monthHeaders = [];
-for ($m = $monthFrom; $m <= $monthTo; $m++) $monthHeaders[] = date('M', mktime(0,0,0,$m,1)) . " $year";
-$monthStartCol = $netCol + 1;
-$monthEndCol = $monthStartCol + count($monthHeaders) - 1;
-
-// Write all headers
-$allHeadersFull = array_merge($allHeaders, $earningHeaders, $deductionHeaders, ['NET PAYABLE'], $monthHeaders);
-foreach ($allHeadersFull as $i => $h) {
-    $sheet->setCellValue(cell($i + 1, $row), $h);
-}
-$totalCols = count($allHeadersFull);
-
-// Style headers
-$headerRange = cell(1, 3) . ':' . cell($infoEndCol, 3);
-$sheet->getStyle($headerRange)->applyFromArray([
-    'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
-    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4F46E5']],
-    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
-    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-]);
-
-$sheet->getStyle(cell($earningStartCol, 3) . ':' . cell($earningEndCol, 3))->applyFromArray([
-    'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
-    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '059669']],
-    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
-    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-]);
-
-$sheet->getStyle(cell($dedStartCol, 3) . ':' . cell($dedEndCol, 3))->applyFromArray([
-    'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
-    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DC2626']],
-    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
-    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-]);
-
-$sheet->getStyle(cell($netCol, 3) . ':' . cell($monthEndCol > $netCol ? $monthEndCol : $netCol, 3))->applyFromArray([
-    'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
-    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '7C3AED']],
-    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
-    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
-]);
-
-$sheet->getRowDimension(3)->setRowHeight(22);
-
-// ── Data Rows ────────────────────────────────────────────────
-$row = 4;
+// Data rows
 foreach ($data as $idx => $r) {
     $basic = (float)$r['basic_salary'];
     $totalEarnings = $basic + (float)$r['hra'] + (float)$r['special_allowance'] + (float)$r['conveyance'] + (float)$r['education_allowance'] + (float)$r['lta'] + (float)$r['mediclaim_insurance'] + (float)$r['medical_reimbursement'] + (float)$r['mobile_internet'] + (float)$r['personal_allowance'];
+
     $monthlyProfTax = round((float)$r['professional_tax'] / 12, 2);
     $monthlyESI = round(($basic * (float)$r['esi_rate']) / 100, 2);
     $monthlyPF = round(($basic * (float)$r['pf_rate']) / 100, 2);
@@ -166,73 +108,64 @@ foreach ($data as $idx => $r) {
     $customDeds = json_decode($r['custom_deductions'] ?? '[]', true) ?: [];
     $customDedMap = [];
     $customDedTotal = 0;
-    foreach ($customDeds as $cd) { $customDedMap[$cd['name']] = (float)$cd['amount']; $customDedTotal += (float)$cd['amount']; }
+    foreach ($customDeds as $cd) {
+        $customDedMap[$cd['name']] = (float)$cd['amount'];
+        $customDedTotal += (float)$cd['amount'];
+    }
 
     $totalDeductions = $monthlyProfTax + $monthlyESI + $monthlyPF + $customDedTotal;
     $netPayable = $totalEarnings - $totalDeductions;
 
-    $values = [
-        $idx + 1, $r['full_name'], $r['emp_code'], $r['email'], $r['dept_name'] ?? '', $r['job_title'] ?? '',
-        (float)$r['gross_salary'], round((float)$r['gross_salary']/12, 2), $basic, (float)$r['hra'],
-        (float)$r['special_allowance'], (float)$r['conveyance'], (float)$r['education_allowance'],
-        (float)$r['lta'], (float)$r['mediclaim_insurance'], (float)$r['medical_reimbursement'],
-        (float)$r['mobile_internet'], (float)$r['personal_allowance'], (float)$r['bonus'],
-        round($totalEarnings, 2),
-        $monthlyProfTax, ucfirst($r['tax_regime']), (float)$r['esi_rate'], (float)$r['pf_rate'],
-        $monthlyESI, $monthlyPF,
+    $row = [
+        $idx + 1,
+        $r['full_name'],
+        $r['emp_code'],
+        $r['email'],
+        $r['dept_name'] ?? '',
+        $r['job_title'] ?? '',
+        number_format((float)$r['gross_salary'], 2, '.', ''),
+        number_format((float)$r['gross_salary'] / 12, 2, '.', ''),
+        number_format($basic, 2, '.', ''),
+        number_format((float)$r['hra'], 2, '.', ''),
+        number_format((float)$r['special_allowance'], 2, '.', ''),
+        number_format((float)$r['conveyance'], 2, '.', ''),
+        number_format((float)$r['education_allowance'], 2, '.', ''),
+        number_format((float)$r['lta'], 2, '.', ''),
+        number_format((float)$r['mediclaim_insurance'], 2, '.', ''),
+        number_format((float)$r['medical_reimbursement'], 2, '.', ''),
+        number_format((float)$r['mobile_internet'], 2, '.', ''),
+        number_format((float)$r['personal_allowance'], 2, '.', ''),
+        number_format((float)$r['bonus'], 2, '.', ''),
+        number_format($totalEarnings, 2, '.', ''),
+        number_format($monthlyProfTax, 2, '.', ''),
+        ucfirst($r['tax_regime']),
+        $r['esi_rate'],
+        $r['pf_rate'],
+        number_format($monthlyESI, 2, '.', ''),
+        number_format($monthlyPF, 2, '.', ''),
     ];
 
     // Custom deductions
-    foreach ($allCustomDedNames as $cdName) $values[] = $customDedMap[$cdName] ?? 0;
-    $values[] = round($totalDeductions, 2);
-    $values[] = round($netPayable, 2);
+    foreach ($allCustomDedNames as $cdName) {
+        $row[] = number_format($customDedMap[$cdName] ?? 0, 2, '.', '');
+    }
 
-    // Monthly
+    $row[] = number_format($totalDeductions, 2, '.', '');
+    $row[] = number_format($netPayable, 2, '.', '');
+
+    // Monthly net
     for ($m = $monthFrom; $m <= $monthTo; $m++) {
         $mNet = $netPayable;
         if ($m === 12) $mNet += (float)$r['bonus'];
-        $values[] = round($mNet, 2);
+        $row[] = number_format($mNet, 2, '.', '');
     }
 
-    foreach ($values as $i => $v) {
-        $sheet->setCellValue(cell($i + 1, $row), $v);
-    }
-
-    // Alternate row color
-    $rowColor = ($idx % 2 === 0) ? 'F9FAFB' : 'FFFFFF';
-    $sheet->getStyle(cell(1, $row) . ':' . cell($totalCols, $row))->applyFromArray([
-        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $rowColor]],
-        'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E5E7EB']]],
-    ]);
-
-    // Net payable highlight
-    $sheet->getStyle(cell($netCol, $row))->applyFromArray([
-        'font' => ['bold' => true, 'color' => ['rgb' => '4F46E5']],
-        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EDE9FE']],
-    ]);
-
-    $row++;
+    fputcsv($output, $row);
 }
 
-// Auto-size columns (limit to avoid timeout)
-for ($c = 1; $c <= min($totalCols, 30); $c++) {
-    $sheet->getColumnDimensionByColumn($c)->setAutoSize(true);
-}
+// Summary row
+fputcsv($output, []);
+fputcsv($output, ['', '', '', '', '', 'Generated on: ' . date('d M Y h:i A')]);
 
-// Freeze panes
-$sheet->freezePane('G4');
-
-// ── Output ───────────────────────────────────────────────────
-$filename = 'Salary_Structure_' . str_replace(' ', '_', $rangeLabel) . '.xlsx';
-header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment; filename="' . $filename . '"');
-header('Cache-Control: max-age=0');
-
-$writer = new Xlsx($spreadsheet);
-$writer->save('php://output');
+fclose($output);
 exit;
-
-} catch (Exception $e) {
-    $_SESSION['flash_error'] = "Export error: " . $e->getMessage();
-    header("Location: payroll.php"); exit;
-}
