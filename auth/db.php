@@ -39,6 +39,8 @@ function getDB(): PDO {
             ");
             // Ensure UNIQUE on email
             try { $pdo->exec("ALTER TABLE `users` ADD UNIQUE KEY `uq_users_email` (`email`)"); } catch(Exception $e) {}
+            // Ensure UNIQUE on employees.email too
+            try { $pdo->exec("ALTER TABLE `employees` ADD UNIQUE KEY `uq_emp_email` (`email`)"); } catch(Exception $e) {}
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_locations` (
                   `id`         INT UNSIGNED  NOT NULL AUTO_INCREMENT,

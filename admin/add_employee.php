@@ -34,7 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($allColumns as $col) {
                 if ($col === 'id' || $col === 'created_at') continue;
                 if ($col === 'employee_id') {
-                    // Use auto-generated value, ignore any form input
                     $insertCols[] = "`employee_id`"; $placeholders[] = "?";
                     $params[] = $autoEmpId;
                     continue;
@@ -46,6 +45,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($col === 'exempt_from_tax') {
                     $insertCols[] = "`$col`"; $placeholders[] = "?";
                     $params[] = isset($_POST['exempt_from_tax']) ? 1 : 0;
+                }
+            }
+
+            // ── Email uniqueness check ──────────────────────
+            $newEmail = strtolower(trim($_POST['email'] ?? ''));
+            if ($newEmail) {
+                $dupCheck = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=?");
+                $dupCheck->execute([$newEmail]);
+                if ($dupCheck->fetch()) {
+                    $_SESSION['flash_error'] = "Email '$newEmail' is already registered to another employee.";
+                    header("Location: add_employee.php"); exit;
+                }
+                // Also check users table
+                $dupUser = $db->prepare("SELECT id FROM users WHERE LOWER(email)=?");
+                $dupUser->execute([$newEmail]);
+                if ($dupUser->fetch()) {
+                    $_SESSION['flash_error'] = "Email '$newEmail' is already in use by an existing user account.";
+                    header("Location: add_employee.php"); exit;
                 }
             }
             if (!empty($insertCols)) {
@@ -164,6 +181,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
 
                             if (!empty($ic)) {
+                                // Check email uniqueness before insert
+                                $rowEmail = $row['email'] ?? '';
+                                if ($rowEmail) {
+                                    $dupChk = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=?");
+                                    $dupChk->execute([strtolower($rowEmail)]);
+                                    if ($dupChk->fetch()) {
+                                        $rowErrors[] = "Row $rowNum: email '$rowEmail' already exists — skipped.";
+                                        continue;
+                                    }
+                                }
                                 $db->prepare("INSERT INTO employees (" . implode(',', $ic) . ") VALUES (" . implode(',', $ph) . ")")->execute($pr);
                                 $successCount++;
 

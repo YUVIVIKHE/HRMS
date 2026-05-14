@@ -119,6 +119,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $params[] = 0;
         }
 
+        // ── Email uniqueness check (exclude current employee) ──
+        $newEmail = strtolower(trim($_POST['email'] ?? ''));
+        if ($newEmail) {
+            $dupEmp = $db->prepare("SELECT id FROM employees WHERE LOWER(email)=? AND id!=?");
+            $dupEmp->execute([$newEmail, $id]);
+            if ($dupEmp->fetch()) {
+                $_SESSION['flash_error'] = "Email '$newEmail' is already registered to another employee.";
+                header("Location: edit_employee.php?id=$id"); exit;
+            }
+        }
+
         $params[] = $id;
         $db->prepare("UPDATE employees SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
 
