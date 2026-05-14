@@ -57,11 +57,6 @@ function getDB(): PDO {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
             $pdo->exec("
-                INSERT IGNORE INTO `attendance_locations`
-                  (`id`,`name`,`address`,`latitude`,`longitude`,`radius_m`,`is_remote`,`is_active`)
-                VALUES (1,'Remote / Work from Home','Anywhere',0,0,0,1,1)
-            ");
-            $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `attendance_logs` (
                   `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
                   `user_id`       INT UNSIGNED  NOT NULL,
