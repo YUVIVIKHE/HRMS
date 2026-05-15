@@ -5,7 +5,7 @@ try { $__db = getDB(); $__ls = $__db->prepare("SELECT setting_value FROM app_set
 <aside class="sidebar">
   <div class="sidebar-logo">
     <?php if($_companyLogo): ?>
-      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:32px;max-width:100%;object-fit:contain;">
+      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo">
     <?php else: ?>
     <div class="logo-mark">
       <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
