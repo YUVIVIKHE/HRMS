@@ -83,6 +83,13 @@ $pendingHrs = array_sum(array_column($pendingACL, 'hours'));
 $totalACLHrs = $totalOTHrs + $aclFromRequests;
 $aclDays = round($totalACLHrs / 9, 2);
 
+// ACL utilized (leaves taken as ACL)
+$aclUtilized = 0;
+try {
+    $au = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')");
+    $au->execute([$uid]); $aclUtilized = (float)$au->fetchColumn();
+} catch (Exception $e) {}
+
 // Sort entries by date
 usort($aclEntries, fn($a, $b) => strcmp($a['date'], $b['date']));
 ?>
@@ -130,7 +137,7 @@ usort($aclEntries, fn($a, $b) => strcmp($a['date'], $b['date']));
     </form>
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -159,6 +166,16 @@ usort($aclEntries, fn($a, $b) => strcmp($a['date'], $b['date']));
           <div class="stat-value" style="color:var(--brand);"><?= $aclDays ?></div>
           <div class="stat-label">ACL Earned</div>
           <div class="stat-sub"><?= $totalACLHrs ?> hrs total ÷ 9<?php if($pendingHrs > 0): ?> · <span style="color:var(--yellow);"><?= $pendingHrs ?>h pending</span><?php endif; ?></div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" style="color:var(--red);"><?= $aclUtilized ?></div>
+          <div class="stat-label">ACL Used</div>
+          <div class="stat-sub">Available: <?= max(0, $aclDays - $aclUtilized) ?> day(s)</div>
         </div>
       </div>
     </div>

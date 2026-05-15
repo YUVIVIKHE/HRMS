@@ -14,6 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_l
     $typeId   = (int)$_POST['leave_type_id'];
     $from     = $_POST['from_date'] ?? '';
     $to       = $_POST['to_date']   ?? '';
+
+    // ACL leave (type_id = 0)
+    $isACL = ($typeId === 0);
     $reason   = trim($_POST['reason'] ?? '');
     $errors   = [];
 
@@ -32,9 +35,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_l
         if ($days <= 0) $errors[] = 'No working days in selected range.';
 
         // Check balance
-        $bal = $db->prepare("SELECT balance FROM leave_balances WHERE user_id=? AND leave_type_id=?");
-        $bal->execute([$uid, $typeId]); $bal = $bal->fetchColumn();
-        if ($bal === false || $bal < $days) $errors[] = "Insufficient balance. Available: ".($bal ?: 0)." day(s), Requested: $days day(s).";
+        if ($isACL) {
+            // Recalculate ACL available
+            $aclAvailCheck = $aclAvailable;
+            if ($aclAvailCheck < $days) $errors[] = "Insufficient ACL balance. Available: $aclAvailCheck day(s), Requested: $days day(s).";
+        } else {
+            $bal = $db->prepare("SELECT balance FROM leave_balances WHERE user_id=? AND leave_type_id=?");
+            $bal->execute([$uid, $typeId]); $bal = $bal->fetchColumn();
+            if ($bal === false || $bal < $days) $errors[] = "Insufficient balance. Available: ".($bal ?: 0)." day(s), Requested: $days day(s).";
+        }
 
         // Check overlap — any leave type, excluding rejected/cancelled
         $overlap = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND status NOT IN ('rejected','cancelled') AND from_date<=? AND to_date>=?");
@@ -80,6 +89,27 @@ foreach ($leaveTypes as $lt) {
     $b->execute([$uid,$lt['id']]); $b = $b->fetch();
     $balances[$lt['id']] = ['balance' => (float)($b['balance']??0), 'used' => (float)($b['used']??0)];
 }
+
+// ACL Balance calculation
+$aclTotalHrs = 0;
+// OT on working days (>11 hrs)
+try {
+    $otLogs = $db->prepare("SELECT SUM(work_seconds - 32400) AS ot_sec FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)");
+    $otLogs->execute([$uid]); $aclTotalHrs += round((float)($otLogs->fetchColumn() ?: 0) / 3600, 2);
+} catch (Exception $e) {}
+// Approved weekend/holiday ACL requests
+try {
+    $aclApproved = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'");
+    $aclApproved->execute([$uid]); $aclTotalHrs += (float)$aclApproved->fetchColumn();
+} catch (Exception $e) {}
+// ACL used (leaves taken as ACL type)
+$aclUsedDays = 0;
+try {
+    $aclUsed = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')");
+    $aclUsed->execute([$uid]); $aclUsedDays = (float)$aclUsed->fetchColumn();
+} catch (Exception $e) {}
+$aclEarnedDays = round($aclTotalHrs / 9, 2);
+$aclAvailable = max(0, $aclEarnedDays - $aclUsedDays);
 
 // Applications
 $applications = $db->prepare("
@@ -130,6 +160,27 @@ $applications = $applications->fetchAll();
 
     <!-- Leave Balance Cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+      <!-- ACL Card -->
+      <div class="card" style="padding:20px;border-color:#7c3aed;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></span>
+          <span style="font-size:13px;font-weight:700;color:var(--text);">ACL (Compensatory)</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <div style="text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#7c3aed;"><?= number_format($aclAvailable,1) ?></div>
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Available</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:var(--red);"><?= number_format($aclUsedDays,1) ?></div>
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Used</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:var(--green-text);"><?= number_format($aclEarnedDays,1) ?></div>
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Earned</div>
+          </div>
+        </div>
+      </div>
       <?php foreach($leaveTypes as $lt):
         $b = $balances[$lt['id']] ?? ['balance'=>0,'used'=>0];
         $total = $b['balance'] + $b['used'];
@@ -181,6 +232,7 @@ $applications = $applications->fetchAll();
               <label>Leave Type <span class="req">*</span></label>
               <select name="leave_type_id" id="applyType" class="form-control" required onchange="updateBalance()">
                 <option value="">Select type…</option>
+                <option value="0" data-bal="<?= $aclAvailable ?>" style="font-weight:700;color:#7c3aed;">ACL (<?= $aclAvailable ?> days available)</option>
                 <?php foreach($leaveTypes as $lt): ?>
                   <option value="<?= $lt['id'] ?>" data-balance="<?= $balances[$lt['id']]['balance'] ?? 0 ?>">
                     <?= htmlspecialchars($lt['name']) ?> (<?= number_format($balances[$lt['id']]['balance']??0,1) ?> days available)
