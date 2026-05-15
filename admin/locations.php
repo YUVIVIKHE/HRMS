@@ -94,6 +94,7 @@ foreach ($ulRows as $r) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
 <div class="app-shell">
@@ -346,6 +347,11 @@ foreach ($ulRows as $r) {
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
             Use My Current Location
           </button>
+          <!-- Map -->
+          <div id="addMapWrap" style="border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px;">
+            <div id="addMap" style="height:200px;width:100%;"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);">Click on the map to set location, or drag the marker.</span>
         </div>
         <div class="form-check">
           <input type="checkbox" name="is_remote" id="add_remote" onchange="toggleGps(this,'gpsFields')">
@@ -507,6 +513,78 @@ function filterUsers(q) {
   q = q.toLowerCase();
   document.querySelectorAll('.urow').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? '' : 'none'; });
 }
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Map for Add Location
+let addMap, addMarker;
+function initAddMap() {
+  if (addMap) return;
+  const lat = parseFloat(document.getElementById('add_lat').value) || 19.076;
+  const lng = parseFloat(document.getElementById('add_lng').value) || 72.8777;
+  addMap = L.map('addMap').setView([lat, lng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(addMap);
+  addMarker = L.marker([lat, lng], {draggable: true}).addTo(addMap);
+
+  // Click on map to move marker
+  addMap.on('click', function(e) {
+    addMarker.setLatLng(e.latlng);
+    document.getElementById('add_lat').value = e.latlng.lat.toFixed(7);
+    document.getElementById('add_lng').value = e.latlng.lng.toFixed(7);
+  });
+
+  // Drag marker
+  addMarker.on('dragend', function() {
+    const pos = addMarker.getLatLng();
+    document.getElementById('add_lat').value = pos.lat.toFixed(7);
+    document.getElementById('add_lng').value = pos.lng.toFixed(7);
+  });
+}
+
+// Initialize map when add modal opens
+const addModal = document.getElementById('addModal');
+if (addModal) {
+  const observer = new MutationObserver(function() {
+    if (addModal.classList.contains('open')) {
+      setTimeout(() => { initAddMap(); addMap.invalidateSize(); }, 200);
+    }
+  });
+  observer.observe(addModal, {attributes: true, attributeFilter: ['class']});
+}
+
+// Update map when lat/lng fields change manually
+document.getElementById('add_lat')?.addEventListener('change', function() {
+  if (!addMap) return;
+  const lat = parseFloat(this.value) || 0;
+  const lng = parseFloat(document.getElementById('add_lng').value) || 0;
+  if (lat && lng) { addMarker.setLatLng([lat, lng]); addMap.setView([lat, lng], 15); }
+});
+document.getElementById('add_lng')?.addEventListener('change', function() {
+  if (!addMap) return;
+  const lat = parseFloat(document.getElementById('add_lat').value) || 0;
+  const lng = parseFloat(this.value) || 0;
+  if (lat && lng) { addMarker.setLatLng([lat, lng]); addMap.setView([lat, lng], 15); }
+});
+
+// Override getMyLoc to also update map
+const origGetMyLoc = getMyLoc;
+getMyLoc = function(latId, lngId) {
+  if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      document.getElementById(latId).value = p.coords.latitude.toFixed(7);
+      document.getElementById(lngId).value = p.coords.longitude.toFixed(7);
+      if (addMap && latId === 'add_lat') {
+        addMarker.setLatLng([p.coords.latitude, p.coords.longitude]);
+        addMap.setView([p.coords.latitude, p.coords.longitude], 16);
+      }
+    },
+    () => alert('Could not get location.'),
+    {enableHighAccuracy: true, timeout: 8000}
+  );
+};
 </script>
 </body>
 </html>
