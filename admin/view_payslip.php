@@ -3,6 +3,17 @@ require_once __DIR__ . '/../auth/guard.php';
 require_once __DIR__ . '/../auth/db.php';
 $db = getDB();
 
+// Load company settings
+$companyName = '';
+$companyLogo = '';
+try {
+    $cs = $db->query("SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('company_name','company_logo')");
+    foreach ($cs->fetchAll() as $row) {
+        if ($row['setting_key'] === 'company_name') $companyName = $row['setting_value'];
+        if ($row['setting_key'] === 'company_logo') $companyLogo = $row['setting_value'];
+    }
+} catch (Exception $e) {}
+
 $id = (int)($_GET['id'] ?? 0);
 if (!$id) { header("Location: payslips.php"); exit; }
 
@@ -90,7 +101,15 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;padding:20px;}
 <div class="slip-wrap">
   <div class="slip">
     <!-- Title -->
-    <div class="slip-title">PAY SLIP FOR THE MONTH OF : <?= strtoupper($monthName) ?></div>
+    <div class="slip-title" style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <?php if($companyName): ?><div style="font-size:18px;font-weight:800;margin-bottom:2px;"><?= htmlspecialchars($companyName) ?></div><?php endif; ?>
+        <div>PAY SLIP FOR THE MONTH OF : <?= strtoupper($monthName) ?></div>
+      </div>
+      <?php if($companyLogo): ?>
+        <img src="../<?= htmlspecialchars($companyLogo) ?>" alt="Logo" style="max-height:40px;max-width:150px;object-fit:contain;">
+      <?php endif; ?>
+    </div>
 
     <!-- Employee Info -->
     <table class="info-table">
