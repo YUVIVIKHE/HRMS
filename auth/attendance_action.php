@@ -58,6 +58,45 @@ function findLocation(PDO $db, int $uid, ?float $lat, ?float $lng): ?array {
 }
 
 if ($action === 'clock_in') {
+    // Check if previous day has unresolved attendance (clocked in but no clock out, no approved regularization)
+    $prevCheck = $db->prepare("
+        SELECT al.log_date, al.clock_in, al.clock_out
+        FROM attendance_logs al
+        WHERE al.user_id = ? AND al.log_date < ? AND al.clock_in IS NOT NULL AND al.clock_out IS NULL
+        ORDER BY al.log_date DESC LIMIT 1
+    ");
+    $prevCheck->execute([$uid, $today]);
+    $unresolved = $prevCheck->fetch();
+
+    if ($unresolved) {
+        // Check if there's an approved regularization for that date
+        $regCheck = $db->prepare("SELECT id FROM attendance_regularizations WHERE user_id=? AND log_date=? AND status='approved'");
+        $regCheck->execute([$uid, $unresolved['log_date']]);
+        if (!$regCheck->fetch()) {
+            $unresolvedDate = date('d M Y', strtotime($unresolved['log_date']));
+            echo json_encode(['ok' => false, 'msg' => "Cannot clock in. You have an unresolved attendance on $unresolvedDate (clocked in but no clock out). Please submit a regularization request first."]); exit;
+        }
+    }
+
+    // Also check if yesterday was a working day and no attendance at all (absent without regularization)
+    $yesterday = date('Y-m-d', strtotime('-1 day'));
+    $yDow = (int)date('N', strtotime($yesterday));
+    if ($yDow < 6) { // Mon-Fri only (skip Sat/Sun)
+        $yLog = $db->prepare("SELECT id FROM attendance_logs WHERE user_id=? AND log_date=?");
+        $yLog->execute([$uid, $yesterday]);
+        if (!$yLog->fetch()) {
+            // Check if on leave or has regularization
+            $onLeave = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND status='approved' AND from_date<=? AND to_date>=?");
+            $onLeave->execute([$uid, $yesterday, $yesterday]);
+            $hasReg = $db->prepare("SELECT id FROM attendance_regularizations WHERE user_id=? AND log_date=? AND status='approved'");
+            $hasReg->execute([$uid, $yesterday]);
+            if (!$onLeave->fetch() && !$hasReg->fetch()) {
+                $yDateStr = date('d M Y', strtotime($yesterday));
+                echo json_encode(['ok' => false, 'msg' => "Cannot clock in. You were absent on $yDateStr without approved leave or regularization. Please submit a regularization request first."]); exit;
+            }
+        }
+    }
+
     $existing = $db->prepare("SELECT id, clock_in FROM attendance_logs WHERE user_id = ? AND log_date = ?");
     $existing->execute([$uid, $today]);
     $row = $existing->fetch();
