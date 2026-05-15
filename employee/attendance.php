@@ -146,7 +146,7 @@ if (!function_exists('fmtHrs')) {
         </button>
         <button class="btn-clock btn-out" id="btnOut"
           <?= (!$todayLog || !$todayLog['clock_in'] || $todayLog['clock_out']) ? 'disabled' : '' ?>
-          onclick="location.href='clock_out.php'">
+          onclick="doClockOut()">
           <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           Clock Out
         </button>
@@ -345,7 +345,7 @@ function validateReg() {
   return true;
 }
 
-// Clock in/out — optimized for speed
+// Clock in — optimized for speed
 let pendingLat = null, pendingLng = null;
 
 function doAction(action) {
@@ -353,19 +353,17 @@ function doAction(action) {
   btn.disabled = true;
   btn.innerHTML = '<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite;"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/></svg> Clocking in…';
 
-  // Start location fetch and API call in parallel for speed
-  let lat = null, lng = null;
   const locationPromise = new Promise(resolve => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        pos => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve(); },
-        () => resolve(),
+        pos => { resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}); },
+        () => resolve({lat: null, lng: null}),
         {enableHighAccuracy: true, timeout: 5000, maximumAge: 0}
       );
-    } else resolve();
+    } else resolve({lat: null, lng: null});
   });
 
-  locationPromise.then(() => {
+  locationPromise.then(({lat, lng}) => {
     const fd = new FormData();
     fd.append('action', 'clock_in');
     if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
@@ -378,6 +376,36 @@ function doAction(action) {
       })
       .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; btn.innerHTML = 'Clock In'; });
   });
+}
+
+// Clock out — one click, no task modal
+function doClockOut() {
+  const btn = document.getElementById('btnOut');
+  btn.disabled = true;
+  btn.innerHTML = 'Clocking out…';
+
+  const doIt = (lat, lng) => {
+    const fd = new FormData();
+    fd.append('action', 'clock_out');
+    if (lat !== null) { fd.append('lat', lat); fd.append('lng', lng); }
+    fd.append('task_progress', '[]');
+    fetch('../auth/attendance_action.php', {method:'POST', body:fd})
+      .then(r => r.json())
+      .then(data => {
+        showToast(data.msg, data.ok ? '#10b981' : '#ef4444');
+        if (data.ok) setTimeout(() => location.reload(), 1000);
+        else { btn.disabled = false; btn.innerHTML = 'Clock Out'; }
+      })
+      .catch(() => { showToast('Network error.', '#ef4444'); btn.disabled = false; btn.innerHTML = 'Clock Out'; });
+  };
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => doIt(pos.coords.latitude, pos.coords.longitude),
+      () => doIt(null, null),
+      {enableHighAccuracy: true, timeout: 5000, maximumAge: 0}
+    );
+  } else doIt(null, null);
 }
 
 function showTaskModal(tasks, workHours) {

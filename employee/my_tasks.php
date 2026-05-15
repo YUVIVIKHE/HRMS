@@ -6,6 +6,26 @@ $db  = getDB();
 $uid = $_SESSION['user_id'];
 $today = date('Y-m-d');
 
+// POST: Update task hours & progress
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_task') {
+    $taskId = (int)($_POST['task_id'] ?? 0);
+    $hours  = (float)($_POST['hours_worked'] ?? 0);
+    $progress = $_POST['progress'] ?? 'In Progress';
+    if ($taskId && $hours > 0 && in_array($progress, ['In Progress','On Hold','Completed'])) {
+        // Verify task belongs to this user
+        $chk = $db->prepare("SELECT id FROM task_assignments WHERE id=? AND assigned_to=?");
+        $chk->execute([$taskId, $uid]);
+        if ($chk->fetch()) {
+            // Insert progress log
+            $db->prepare("INSERT INTO task_progress_logs (task_id, user_id, attendance_id, log_date, hours_worked, progress) VALUES (?,?,0,?,?,?)")
+               ->execute([$taskId, $uid, $today, $hours, $progress]);
+            // Update task status
+            $db->prepare("UPDATE task_assignments SET status=? WHERE id=?")->execute([$progress, $taskId]);
+        }
+    }
+    header("Location: my_tasks.php?" . $_SERVER['QUERY_STRING']); exit;
+}
+
 // ── Filters ──────────────────────────────────────────────────
 $filterProject  = (int)($_GET['project_id'] ?? 0);
 $filterDate     = trim($_GET['date'] ?? $today);
@@ -164,37 +184,59 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
         $assigned  = (float)$t['hours'];
         $pct       = $assigned > 0 ? min(100, round(($utilized / $assigned) * 100)) : 0;
         $barColor  = $pct >= 100 ? 'var(--green)' : 'var(--blue)';
+        $remaining = max(0, round($assigned - $utilized, 1));
       ?>
       <div class="card" style="<?= $isOverdue?'border-color:#fca5a5;':'' ?>">
-        <div style="padding:16px 20px;display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:240px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-              <code style="font-size:11px;background:var(--surface-2);padding:2px 7px;border-radius:5px;color:var(--muted);"><?= htmlspecialchars($t['project_code']) ?></code>
-              <span style="font-size:12.5px;color:var(--muted);"><?= htmlspecialchars($t['project_name']) ?></span>
-              <?php if($isOverdue): ?><span class="badge badge-red" style="font-size:10.5px;">Overdue</span><?php endif; ?>
+        <div style="padding:16px 20px;">
+          <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:240px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                <code style="font-size:11px;background:var(--surface-2);padding:2px 7px;border-radius:5px;color:var(--muted);"><?= htmlspecialchars($t['project_code']) ?></code>
+                <span style="font-size:12.5px;color:var(--muted);"><?= htmlspecialchars($t['project_name']) ?></span>
+                <?php if($isOverdue): ?><span class="badge badge-red" style="font-size:10.5px;">Overdue</span><?php endif; ?>
+              </div>
+              <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;"><?= htmlspecialchars($t['subtask']) ?></div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);">
+                <span><?= date('d M', strtotime($t['from_date'])) ?> → <?= date('d M Y', strtotime($t['to_date'])) ?></span>
+                <span>Assigned by <?= htmlspecialchars($t['assigned_by_name']) ?></span>
+                <?php if(!$isOverdue && $daysLeft >= 0): ?>
+                  <span style="color:<?= $daysLeft<=2?'var(--red)':($daysLeft<=5?'var(--yellow)':'var(--muted)') ?>;font-weight:600;"><?= $daysLeft ?> day<?= $daysLeft!==1?'s':'' ?> left</span>
+                <?php endif; ?>
+              </div>
             </div>
-            <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px;"><?= htmlspecialchars($t['subtask']) ?></div>
-            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);">
-              <span><?= date('d M', strtotime($t['from_date'])) ?> → <?= date('d M Y', strtotime($t['to_date'])) ?></span>
-              <span>Assigned by <?= htmlspecialchars($t['assigned_by_name']) ?></span>
-              <?php if(!$isOverdue && $daysLeft >= 0): ?>
-                <span style="color:<?= $daysLeft<=2?'var(--red)':($daysLeft<=5?'var(--yellow)':'var(--muted)') ?>;font-weight:600;"><?= $daysLeft ?> day<?= $daysLeft!==1?'s':'' ?> left</span>
-              <?php endif; ?>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;min-width:150px;">
+              <div style="font-size:12px;color:var(--muted);">
+                <span style="font-weight:800;color:var(--green-text);font-size:16px;"><?= number_format($utilized,1) ?></span>
+                <span>/ <?= number_format($assigned,1) ?> hrs</span>
+              </div>
+              <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;width:140px;">
+                <div style="height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:3px;"></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);"><?= $pct ?>% done</div>
             </div>
-            <?php if($t['notes']): ?>
-              <div style="margin-top:8px;font-size:12.5px;color:var(--muted);background:var(--surface-2);padding:8px 10px;border-radius:6px;"><?= htmlspecialchars($t['notes']) ?></div>
-            <?php endif; ?>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;min-width:150px;">
-            <div style="font-size:12px;color:var(--muted);">
-              <span style="font-weight:800;color:var(--green-text);font-size:16px;"><?= number_format($utilized,1) ?></span>
-              <span>/ <?= number_format($assigned,1) ?> hrs</span>
+          <!-- Update Hours & Progress -->
+          <?php if($t['status'] !== 'Completed'): ?>
+          <form method="POST" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="hidden" name="action" value="update_task">
+            <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <label style="font-size:12px;font-weight:600;color:var(--muted);">Log Hrs:</label>
+              <input type="number" name="hours_worked" class="form-control" style="width:70px;font-size:12px;padding:6px 8px;text-align:center;" min="0.5" max="<?= $remaining ?>" step="0.5" placeholder="0" required>
             </div>
-            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;width:140px;">
-              <div style="height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:3px;"></div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <label style="font-size:12px;font-weight:600;color:var(--muted);">Status:</label>
+              <select name="progress" class="form-control" style="font-size:12px;padding:6px 10px;width:auto;">
+                <option value="In Progress" <?= $t['status']==='In Progress'?'selected':'' ?>>In Progress</option>
+                <option value="On Hold">On Hold</option>
+                <option value="Completed">Completed</option>
+              </select>
             </div>
-            <div style="font-size:11px;color:var(--muted);"><?= $pct ?>% done</div>
-          </div>
+            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+          </form>
+          <?php else: ?>
+          <div style="margin-top:10px;font-size:12px;color:var(--green-text);font-weight:600;">✓ Completed</div>
+          <?php endif; ?>
         </div>
       </div>
       <?php endforeach; ?>
