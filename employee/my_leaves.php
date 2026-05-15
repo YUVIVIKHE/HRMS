@@ -15,8 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_l
     $from     = $_POST['from_date'] ?? '';
     $to       = $_POST['to_date']   ?? '';
 
-    // ACL leave (type_id = 0)
-    $isACL = ($typeId === 0);
+    // ACL leave (type_id = 9999 in form, stored as 0)
+    $isACL = ($typeId === 9999);
+    if ($isACL) $typeId = 0;
     $reason   = trim($_POST['reason'] ?? '');
     $errors   = [];
 
@@ -232,7 +233,7 @@ $applications = $applications->fetchAll();
               <label>Leave Type <span class="req">*</span></label>
               <select name="leave_type_id" id="applyType" class="form-control" required onchange="updateBalance()">
                 <option value="">Select type…</option>
-                <option value="0" data-bal="<?= $aclAvailable ?>" style="font-weight:700;color:#7c3aed;">ACL (<?= $aclAvailable ?> days available)</option>
+                <option value="9999" data-bal="<?= $aclAvailable ?>" style="font-weight:700;color:#7c3aed;">ACL (<?= $aclAvailable ?> days available)</option>
                 <?php foreach($leaveTypes as $lt): ?>
                   <option value="<?= $lt['id'] ?>" data-balance="<?= $balances[$lt['id']]['balance'] ?? 0 ?>">
                     <?= htmlspecialchars($lt['name']) ?> (<?= number_format($balances[$lt['id']]['balance']??0,1) ?> days available)
