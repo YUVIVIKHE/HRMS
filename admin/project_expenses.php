@@ -28,10 +28,19 @@ if($fp){$w[]="pe.project_id=?";$pa[]=$fp;}
 if($fc){$w[]="pe.category=?";$pa[]=$fc;}
 if($ff){$w[]="pe.expense_date>=?";$pa[]=$ff;}
 if($ft){$w[]="pe.expense_date<=?";$pa[]=$ft;}
-$st=$db->prepare("SELECT pe.*,pr.project_name,pr.project_code FROM project_expenses pe JOIN projects pr ON pe.project_id=pr.id WHERE ".implode(' AND ',$w)." ORDER BY pe.expense_date DESC");
+$page = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 50;
+$offset = ($page - 1) * $perPage;
+
+$countSt = $db->prepare("SELECT COUNT(*) FROM project_expenses pe JOIN projects pr ON pe.project_id=pr.id WHERE ".implode(' AND ',$w));
+$countSt->execute($pa); $totalRows = (int)$countSt->fetchColumn();
+$totalPages = ceil($totalRows / $perPage);
+
+$st=$db->prepare("SELECT pe.*,pr.project_name,pr.project_code FROM project_expenses pe JOIN projects pr ON pe.project_id=pr.id WHERE ".implode(' AND ',$w)." ORDER BY pe.expense_date DESC LIMIT $perPage OFFSET $offset");
 $st->execute($pa);$expenses=$st->fetchAll();
-$tot=array_sum(array_column($expenses,'amount'));
-$ct=[];foreach($expenses as $e){$ct[$e['category']]=($ct[$e['category']]??0)+(float)$e['amount'];}
+$totSt=$db->prepare("SELECT COALESCE(SUM(pe.amount),0) as total, pe.category FROM project_expenses pe JOIN projects pr ON pe.project_id=pr.id WHERE ".implode(' AND ',$w)." GROUP BY pe.category");
+$totSt->execute($pa);$catRows=$totSt->fetchAll();
+$tot=0;$ct=[];foreach($catRows as $r){$ct[$r['category']]=(float)$r['total'];$tot+=(float)$r['total'];}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -79,8 +88,8 @@ $ct=[];foreach($expenses as $e){$ct[$e['category']]=($ct[$e['category']]??0)+(fl
 <a href="project_expenses.php" class="btn btn-ghost btn-sm">Reset</a>
 <a href="export_expenses.php?project_id=<?=$fp?>&category=<?=urlencode($fc)?>&date_from=<?=$ff?>&date_to=<?=$ft?>" class="btn btn-sm" style="margin-left:auto;background:var(--green-bg);color:var(--green-text);border:1px solid #a7f3d0;font-weight:700">Export</a></form>
 
-<div class="table-wrap"><div class="table-toolbar"><h2>Expenses (<?=count($expenses)?>)</h2></div>
-<table><thead><tr><th>Date</th><th>Project</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th style="width:60px"></th></tr></thead><tbody>
+<div class="table-wrap" style="max-height:500px;overflow-y:auto;"><div class="table-toolbar" style="position:sticky;top:0;background:var(--surface);z-index:1;"><h2>Expenses (<?=count($expenses)?>)</h2></div>
+<table><thead style="position:sticky;top:40px;background:var(--surface);z-index:1;"><tr><th>Date</th><th>Project</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th style="width:60px"></th></tr></thead><tbody>
 <?php if(empty($expenses)):?><tr class="empty-row"><td colspan="6">No expenses.</td></tr>
 <?php else:foreach($expenses as $e):?>
 <tr><td class="font-semibold text-sm"><?=date('d M Y',strtotime($e['expense_date']))?></td>
@@ -90,4 +99,13 @@ $ct=[];foreach($expenses as $e){$ct[$e['category']]=($ct[$e['category']]??0)+(fl
 <td style="text-align:right;font-weight:700;color:var(--brand)">₹<?=number_format($e['amount'],2)?></td>
 <td><form method="POST" style="display:inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="action" value="delete_expense"><input type="hidden" name="expense_id" value="<?=$e['id']?>"><button type="submit" class="btn btn-sm" style="background:var(--red-bg);color:var(--red);border:1px solid #fca5a5;font-size:11px">Del</button></form></td></tr>
 <?php endforeach;endif;?></tbody></table></div>
+
+<?php if($totalPages > 1): ?>
+<div style="display:flex;gap:6px;justify-content:center;margin-top:16px;align-items:center;">
+  <?php if($page > 1): ?><a href="?<?= http_build_query(array_merge($_GET, ['page'=>$page-1])) ?>" class="btn btn-ghost btn-sm">← Prev</a><?php endif; ?>
+  <span style="font-size:12px;color:var(--muted);">Page <?=$page?> of <?=$totalPages?> (<?=$totalRows?> records)</span>
+  <?php if($page < $totalPages): ?><a href="?<?= http_build_query(array_merge($_GET, ['page'=>$page+1])) ?>" class="btn btn-ghost btn-sm">Next →</a><?php endif; ?>
+</div>
+<?php endif; ?>
+
 </div></div></div></body></html>
