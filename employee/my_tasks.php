@@ -79,6 +79,8 @@ $stmt->execute([$uid]); $totalHrs = (float)$stmt->fetchColumn();
 $stmt2 = $db->prepare("SELECT COALESCE(SUM(tpl.hours_worked),0) FROM task_progress_logs tpl WHERE tpl.user_id=?");
 $stmt2->execute([$uid]); $trackedHrs = (float)$stmt2->fetchColumn();
 
+$extraConsumed = max(0, $trackedHrs - $totalHrs);
+
 $stmtCnt = $db->prepare("SELECT COUNT(*) FROM task_assignments WHERE assigned_to=?");
 $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
 ?>
@@ -115,7 +117,7 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
   <div class="page-body">
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -141,6 +143,15 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
         <div class="stat-body">
           <div class="stat-value"><?= number_format($trackedHrs,1) ?></div>
           <div class="stat-label">Hrs Worked</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" style="color:var(--red);"><?= number_format($extraConsumed,1) ?></div>
+          <div class="stat-label">Extra Consumed</div>
         </div>
       </div>
     </div>

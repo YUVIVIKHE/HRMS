@@ -21,6 +21,7 @@ $projects = $projects->fetchAll();
 $total = count($projects);
 $totalHrs = array_sum(array_column($projects, 'total_hours'));
 $totalWorked = array_sum(array_column($projects, 'worked_hours'));
+$totalExtra = max(0, $totalWorked - $totalHrs);
 $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= date('Y-m-d') && $p['deadline_date'] <= date('Y-m-d', strtotime('+7 days'))));
 ?>
 <!DOCTYPE html>
@@ -52,7 +53,7 @@ $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= d
   <div class="page-body">
 
     <!-- Stats -->
-    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -90,6 +91,15 @@ $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= d
           <div class="stat-label">Hrs Worked</div>
         </div>
       </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" style="color:var(--red);"><?= number_format($totalExtra,1) ?></div>
+          <div class="stat-label">Extra Consumed</div>
+        </div>
+      </div>
     </div>
 
     <!-- Search -->
@@ -119,6 +129,7 @@ $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= d
             <th>Timeline</th>
             <th style="text-align:center;">Total Hrs</th>
             <th style="text-align:center;">Worked Hrs</th>
+            <th style="text-align:center;">Extra</th>
             <th>Progress</th>
             <th>Deadline</th>
           </tr>
@@ -127,6 +138,7 @@ $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= d
           <?php foreach($projects as $p):
             $worked = (float)$p['worked_hours'];
             $assigned = (float)$p['total_hours'];
+            $extra = max(0, $worked - $assigned);
             $pct = $assigned > 0 ? min(100, round(($worked/$assigned)*100)) : 0;
             $overdue = $p['deadline_date'] < date('Y-m-d');
             $daysLeft = (int)ceil((strtotime($p['deadline_date']) - time()) / 86400);
@@ -145,6 +157,7 @@ $deadlineNear = count(array_filter($projects, fn($p) => $p['deadline_date'] >= d
             </td>
             <td style="text-align:center;font-weight:700;color:var(--brand);"><?= number_format($assigned,1) ?></td>
             <td style="text-align:center;font-weight:700;color:var(--green-text);"><?= number_format($worked,1) ?></td>
+            <td style="text-align:center;font-weight:700;color:<?= $extra > 0 ? 'var(--red)' : 'var(--muted)' ?>;"><?= $extra > 0 ? '+'.number_format($extra,1) : '0.0' ?></td>
             <td style="min-width:100px;">
               <div style="display:flex;align-items:center;gap:5px;">
                 <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">
