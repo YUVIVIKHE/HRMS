@@ -309,7 +309,7 @@ foreach ($ulRows as $r) {
 
 <!-- ── Add Location Modal ── -->
 <div class="modal-overlay" id="addModal">
-  <div class="modal">
+  <div class="modal" style="max-width:750px;">
     <div class="modal-header">
       <h3>Add Office Location</h3>
       <button class="modal-close" onclick="closeModal('addModal')">
@@ -318,47 +318,52 @@ foreach ($ulRows as $r) {
     </div>
     <form method="POST">
       <input type="hidden" name="action" value="add_location">
-      <div class="modal-body">
-        <div class="form-group" style="margin-bottom:14px;">
-          <label>Location Name <span class="req">*</span></label>
-          <input type="text" name="name" class="form-control" placeholder="e.g. Head Office Mumbai" required>
-        </div>
-        <div class="form-group" style="margin-bottom:14px;">
-          <label>Address</label>
-          <input type="text" name="address" class="form-control" placeholder="Full address">
-        </div>
-        <div id="gpsFields">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-            <div class="form-group">
-              <label>Latitude</label>
-              <input type="number" step="0.0000001" name="latitude" id="add_lat" class="form-control" placeholder="19.0760">
+      <div class="modal-body" style="padding:0;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;min-height:400px;">
+          <!-- Left: Form fields -->
+          <div style="padding:20px;overflow-y:auto;">
+            <div class="form-group" style="margin-bottom:14px;">
+              <label>Location Name <span class="req">*</span></label>
+              <input type="text" name="name" class="form-control" placeholder="e.g. Head Office Mumbai" required>
             </div>
-            <div class="form-group">
-              <label>Longitude</label>
-              <input type="number" step="0.0000001" name="longitude" id="add_lng" class="form-control" placeholder="72.8777">
+            <div class="form-group" style="margin-bottom:14px;">
+              <label>Address</label>
+              <input type="text" name="address" class="form-control" placeholder="Full address">
+            </div>
+            <div id="gpsFields">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                <div class="form-group">
+                  <label>Latitude</label>
+                  <input type="number" step="0.0000001" name="latitude" id="add_lat" class="form-control" placeholder="19.0760">
+                </div>
+                <div class="form-group">
+                  <label>Longitude</label>
+                  <input type="number" step="0.0000001" name="longitude" id="add_lng" class="form-control" placeholder="72.8777">
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px;">
+                <label>Allowed Radius (metres)</label>
+                <input type="number" name="radius_m" class="form-control" value="200" min="50" max="5000">
+                <span style="font-size:11px;color:var(--muted-light);">Must be within this distance to clock in</span>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:14px;" onclick="getMyLoc('add_lat','add_lng')">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                Use My Current Location
+              </button>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" name="is_remote" id="add_remote" onchange="toggleGps(this,'gpsFields')">
+              <label for="add_remote">Remote / Work from Home (no GPS check)</label>
             </div>
           </div>
-          <div class="form-group" style="margin-bottom:14px;">
-            <label>Allowed Radius (metres)</label>
-            <input type="number" name="radius_m" class="form-control" value="200" min="50" max="5000">
-            <span style="font-size:11.5px;color:var(--muted-light);">Employees must be within this distance to clock in</span>
+          <!-- Right: Map -->
+          <div style="background:var(--surface-2);border-left:1px solid var(--border);display:flex;flex-direction:column;">
+            <div id="addMap" style="flex:1;min-height:350px;"></div>
+            <div style="padding:8px 12px;font-size:11px;color:var(--muted);background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;gap:4px;">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Click map or drag marker to set location
+            </div>
           </div>
-          <button type="button" class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:14px;" onclick="getMyLoc('add_lat','add_lng')">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
-            Use My Current Location
-          </button>
-          <!-- Map -->
-          <div id="addMapWrap" style="border-radius:10px;overflow:hidden;border:1.5px solid var(--border);margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
-            <div id="addMap" style="height:250px;width:100%;"></div>
-          </div>
-          <span style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;margin-bottom:14px;">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Click on map to set location or drag the marker to adjust
-          </span>
-        </div>
-        <div class="form-check">
-          <input type="checkbox" name="is_remote" id="add_remote" onchange="toggleGps(this,'gpsFields')">
-          <label for="add_remote">Remote / Work from Home (no GPS check)</label>
         </div>
       </div>
       <div class="modal-footer">
