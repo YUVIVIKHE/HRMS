@@ -79,20 +79,25 @@ if ($action === 'clock_in') {
     }
 
     // Also check if yesterday was a working day and no attendance at all (absent without regularization)
-    $yesterday = date('Y-m-d', strtotime('-1 day'));
-    $yDow = (int)date('N', strtotime($yesterday));
-    if ($yDow < 6) { // Mon-Fri only (skip Sat/Sun)
-        $yLog = $db->prepare("SELECT id FROM attendance_logs WHERE user_id=? AND log_date=?");
-        $yLog->execute([$uid, $yesterday]);
-        if (!$yLog->fetch()) {
-            // Check if on leave or has regularization
-            $onLeave = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND status='approved' AND from_date<=? AND to_date>=?");
-            $onLeave->execute([$uid, $yesterday, $yesterday]);
-            $hasReg = $db->prepare("SELECT id FROM attendance_regularizations WHERE user_id=? AND log_date=? AND status='approved'");
-            $hasReg->execute([$uid, $yesterday]);
-            if (!$onLeave->fetch() && !$hasReg->fetch()) {
-                $yDateStr = date('d M Y', strtotime($yesterday));
-                echo json_encode(['ok' => false, 'msg' => "Cannot clock in. You were absent on $yDateStr without approved leave or regularization. Please submit a regularization request first."]); exit;
+    // Only check if user has at least one attendance record (skip for new employees)
+    $hasAnyAttendance = $db->prepare("SELECT id FROM attendance_logs WHERE user_id=? LIMIT 1");
+    $hasAnyAttendance->execute([$uid]);
+    if ($hasAnyAttendance->fetch()) {
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $yDow = (int)date('N', strtotime($yesterday));
+        if ($yDow < 6) { // Mon-Fri only (skip Sat/Sun)
+            $yLog = $db->prepare("SELECT id FROM attendance_logs WHERE user_id=? AND log_date=?");
+            $yLog->execute([$uid, $yesterday]);
+            if (!$yLog->fetch()) {
+                // Check if on leave or has regularization
+                $onLeave = $db->prepare("SELECT id FROM leave_applications WHERE user_id=? AND status='approved' AND from_date<=? AND to_date>=?");
+                $onLeave->execute([$uid, $yesterday, $yesterday]);
+                $hasReg = $db->prepare("SELECT id FROM attendance_regularizations WHERE user_id=? AND log_date=? AND status='approved'");
+                $hasReg->execute([$uid, $yesterday]);
+                if (!$onLeave->fetch() && !$hasReg->fetch()) {
+                    $yDateStr = date('d M Y', strtotime($yesterday));
+                    echo json_encode(['ok' => false, 'msg' => "Cannot clock in. You were absent on $yDateStr without approved leave or regularization. Please submit a regularization request first."]); exit;
+                }
             }
         }
     }
