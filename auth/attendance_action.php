@@ -199,9 +199,33 @@ if ($action === 'clock_out') {
     $hrsStr = sprintf('%dh %02dm', $h, $m);
     $short  = $workSec < 32400;
 
+    // ── Auto ACL: If today is Saturday/Sunday/Holiday, auto-submit ACL request ──
+    $todayDow = (int)date('N'); // 6=Sat, 7=Sun
+    $isWeekend = ($todayDow === 6 || $todayDow === 7);
+    $isHolidayToday = false;
+    try {
+        $holChk = $db->prepare("SELECT id FROM holidays WHERE holiday_date=?");
+        $holChk->execute([$today]);
+        $isHolidayToday = (bool)$holChk->fetch();
+    } catch (Exception $e) {}
+
+    if (($isWeekend || $isHolidayToday) && $workSec > 0) {
+        // Auto-create ACL request for weekend/holiday work (pending approval)
+        $workHrsForACL = round($workSec / 3600, 2);
+        $reason = $isWeekend ? 'Worked on weekend (' . date('l') . ')' : 'Worked on holiday';
+        try {
+            $aclChk = $db->prepare("SELECT id FROM acl_requests WHERE user_id=? AND work_date=?");
+            $aclChk->execute([$uid, $today]);
+            if (!$aclChk->fetch()) {
+                $db->prepare("INSERT INTO acl_requests (user_id, work_date, reason, hours) VALUES (?,?,?,?)")
+                   ->execute([$uid, $today, $reason, $workHrsForACL]);
+            }
+        } catch (Exception $e) {}
+    }
+
     echo json_encode([
         'ok'      => true,
-        'msg'     => "Clocked out at " . date('h:i A') . ". Total: $hrsStr" . ($short ? ' (less than 9h mandatory)' : ''),
+        'msg'     => "Clocked out at " . date('h:i A') . ". Total: $hrsStr" . ($short ? ' (less than 9h mandatory)' : '') . (($isWeekend || $isHolidayToday) ? ' — ACL request sent for approval.' : ''),
         'time'    => date('h:i A'),
         'hours'   => $hrsStr,
         'short'   => $short,

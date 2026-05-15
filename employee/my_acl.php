@@ -10,10 +10,17 @@ $filterYear  = (int)($_GET['year'] ?? date('Y'));
 
 // Required hours = 9, Overtime threshold = 2 hrs extra (total > 11 hrs = 39600 sec)
 $REQUIRED_SEC = 9 * 3600;  // 32400
-$OT_THRESHOLD = 2 * 3600;  // 7200 (must exceed 9+2=11 hrs to count)
-$MIN_OT_SEC = $REQUIRED_SEC + $OT_THRESHOLD; // 39600 sec = 11 hrs
+$MIN_OT_SEC = 11 * 3600;   // 39600 sec = 11 hrs (only for working days)
 
-// Get attendance logs for the month where work_seconds > 11 hrs
+// Get holidays for the month
+$monthHolidays = [];
+try {
+    $hStmt = $db->prepare("SELECT holiday_date FROM holidays WHERE DATE_FORMAT(holiday_date,'%Y-%m')=?");
+    $hStmt->execute([sprintf('%04d-%02d', $filterYear, $filterMonth)]);
+    $monthHolidays = $hStmt->fetchAll(PDO::FETCH_COLUMN);
+} catch (Exception $e) {}
+
+// 1. OT on WORKING DAYS: work > 11 hrs (no request needed, auto-counted)
 $logs = $db->prepare("
     SELECT log_date, clock_in, clock_out, work_seconds
     FROM attendance_logs
@@ -23,33 +30,61 @@ $logs = $db->prepare("
 $logs->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth), $MIN_OT_SEC]);
 $logs = $logs->fetchAll();
 
-// Calculate ACL from overtime
 $totalOTSeconds = 0;
 $aclEntries = [];
 foreach ($logs as $l) {
-    $otSec = (int)$l['work_seconds'] - $REQUIRED_SEC;
-    $totalOTSeconds += $otSec;
-    $aclEntries[] = [
-        'date' => $l['log_date'],
-        'clock_in' => $l['clock_in'],
-        'clock_out' => $l['clock_out'],
-        'total_hrs' => round((int)$l['work_seconds'] / 3600, 2),
-        'ot_hrs' => round($otSec / 3600, 2),
-    ];
+    $dow = (int)date('N', strtotime($l['log_date']));
+    $isWeekendOrHoliday = ($dow === 6 || $dow === 7 || in_array($l['log_date'], $monthHolidays));
+    // Only count OT for working days (not weekends/holidays — those go through ACL requests)
+    if (!$isWeekendOrHoliday) {
+        $otSec = (int)$l['work_seconds'] - $REQUIRED_SEC;
+        $totalOTSeconds += $otSec;
+        $aclEntries[] = [
+            'date' => $l['log_date'],
+            'clock_in' => $l['clock_in'],
+            'clock_out' => $l['clock_out'],
+            'total_hrs' => round((int)$l['work_seconds'] / 3600, 2),
+            'ot_hrs' => round($otSec / 3600, 2),
+            'type' => 'OT (Working Day)',
+        ];
+    }
 }
 $totalOTHrs = round($totalOTSeconds / 3600, 2);
 
-// Get approved ACL requests for this month
+// 2. Weekend/Holiday work: Only count APPROVED ACL requests
 $approvedACL = $db->prepare("
     SELECT work_date, hours FROM acl_requests
     WHERE user_id = ? AND status = 'approved' AND DATE_FORMAT(work_date,'%Y-%m') = ?
 ");
 $approvedACL->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth)]);
 $approvedACL = $approvedACL->fetchAll();
-$aclFromRequests = array_sum(array_column($approvedACL, 'hours'));
+$aclFromRequests = 0;
+foreach ($approvedACL as $ar) {
+    $aclFromRequests += (float)$ar['hours'];
+    $aclEntries[] = [
+        'date' => $ar['work_date'],
+        'clock_in' => '-',
+        'clock_out' => '-',
+        'total_hrs' => (float)$ar['hours'],
+        'ot_hrs' => (float)$ar['hours'],
+        'type' => 'Weekend/Holiday (Approved)',
+    ];
+}
+
+// 3. Pending ACL requests (show but don't count)
+$pendingACL = $db->prepare("
+    SELECT work_date, hours FROM acl_requests
+    WHERE user_id = ? AND status = 'pending' AND DATE_FORMAT(work_date,'%Y-%m') = ?
+");
+$pendingACL->execute([$uid, sprintf('%04d-%02d', $filterYear, $filterMonth)]);
+$pendingACL = $pendingACL->fetchAll();
+$pendingHrs = array_sum(array_column($pendingACL, 'hours'));
 
 $totalACLHrs = $totalOTHrs + $aclFromRequests;
 $aclDays = round($totalACLHrs / 9, 2);
+
+// Sort entries by date
+usort($aclEntries, fn($a, $b) => strcmp($a['date'], $b['date']));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -123,7 +158,7 @@ $aclDays = round($totalACLHrs / 9, 2);
         <div class="stat-body">
           <div class="stat-value" style="color:var(--brand);"><?= $aclDays ?></div>
           <div class="stat-label">ACL Earned</div>
-          <div class="stat-sub"><?= $totalACLHrs ?> hrs total ÷ 9</div>
+          <div class="stat-sub"><?= $totalACLHrs ?> hrs total ÷ 9<?php if($pendingHrs > 0): ?> · <span style="color:var(--yellow);"><?= $pendingHrs ?>h pending</span><?php endif; ?></div>
         </div>
       </div>
     </div>
@@ -141,7 +176,7 @@ $aclDays = round($totalACLHrs / 9, 2);
       </div></div>
     <?php else: ?>
     <div class="table-wrap">
-      <div class="table-toolbar"><h2>Overtime Log — <?= date('F Y', mktime(0,0,0,$filterMonth,1,$filterYear)) ?></h2></div>
+      <div class="table-toolbar"><h2>ACL Log — <?= date('F Y', mktime(0,0,0,$filterMonth,1,$filterYear)) ?></h2></div>
       <table>
         <thead>
           <tr>
@@ -149,23 +184,25 @@ $aclDays = round($totalACLHrs / 9, 2);
             <th>Clock In</th>
             <th>Clock Out</th>
             <th style="text-align:center;">Total Hrs</th>
-            <th style="text-align:center;">OT Hrs</th>
+            <th style="text-align:center;">ACL Hrs</th>
+            <th>Type</th>
           </tr>
         </thead>
         <tbody>
           <?php foreach($aclEntries as $e): ?>
           <tr>
             <td class="font-semibold"><?= date('D, d M', strtotime($e['date'])) ?></td>
-            <td class="text-sm"><?= date('h:i A', strtotime($e['clock_in'])) ?></td>
-            <td class="text-sm"><?= date('h:i A', strtotime($e['clock_out'])) ?></td>
+            <td class="text-sm"><?= $e['clock_in'] !== '-' ? date('h:i A', strtotime($e['clock_in'])) : '—' ?></td>
+            <td class="text-sm"><?= $e['clock_out'] !== '-' ? date('h:i A', strtotime($e['clock_out'])) : '—' ?></td>
             <td style="text-align:center;font-weight:700;"><?= $e['total_hrs'] ?></td>
             <td style="text-align:center;font-weight:800;color:var(--green-text);"><?= $e['ot_hrs'] ?></td>
+            <td><span class="badge <?= strpos($e['type'],'OT')!==false?'badge-blue':'badge-green' ?>" style="font-size:10.5px;"><?= $e['type'] ?></span></td>
           </tr>
           <?php endforeach; ?>
           <tr style="background:var(--surface-2);font-weight:800;">
-            <td colspan="3">Total</td>
-            <td style="text-align:center;"><?= round(array_sum(array_column($aclEntries,'total_hrs')),1) ?></td>
-            <td style="text-align:center;color:var(--brand);"><?= $totalOTHrs ?></td>
+            <td colspan="4">Total ACL Hours</td>
+            <td style="text-align:center;color:var(--brand);"><?= $totalACLHrs ?></td>
+            <td>= <?= $aclDays ?> day(s)</td>
           </tr>
         </tbody>
       </table>
