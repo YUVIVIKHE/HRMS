@@ -1,11 +1,13 @@
 <?php
 /**
  * Shared task configuration — include once per request.
- * Defines SUBTASKS constant and workingDays() helper.
+ * Role-based subtask lists + custom task entry.
  */
 if (!defined('SUBTASKS_DEFINED')) {
     define('SUBTASKS_DEFINED', true);
-    define('SUBTASKS', [
+
+    // Design Engineer tasks
+    define('SUBTASKS_DESIGN', [
         'PANEL SEGREGATION',
         'FIELD BOX MARKING',
         'PRELIMINARY CAS',
@@ -22,6 +24,16 @@ if (!defined('SUBTASKS_DEFINED')) {
         'CHECKING WITH SALES / PM',
         'FINAL DOCUMENTATION',
     ]);
+
+    // Site Engineer tasks
+    define('SUBTASKS_SITE', [
+        'PRE-STARTUP',
+        'INSTALLATION',
+        'COMMISSIONING',
+    ]);
+
+    // All subtasks combined (for backward compatibility)
+    define('SUBTASKS', array_merge(SUBTASKS_DESIGN, SUBTASKS_SITE));
 }
 
 if (!function_exists('workingDays')) {

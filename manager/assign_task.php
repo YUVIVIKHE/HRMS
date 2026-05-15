@@ -210,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
                   <select name="assigned_to" id="empSelect" class="form-control" required onchange="onEmpChange()">
                     <option value="">— Select Employee —</option>
                     <?php foreach($teamMembers as $m): ?>
-                      <option value="<?= $m['id'] ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']==$m['id'])?'selected':'' ?>>
+                      <option value="<?= $m['id'] ?>" data-job="<?= htmlspecialchars(strtolower($m['job_title'] ?? '')) ?>" <?= (isset($_POST['assigned_to'])&&(int)$_POST['assigned_to']==$m['id'])?'selected':'' ?>>
                         <?= htmlspecialchars($m['name']) ?> (<?= htmlspecialchars($m['job_title'] ?: $m['emp_code'] ?: $m['email']) ?>)
                       </option>
                     <?php endforeach; ?>
@@ -256,9 +256,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
               <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
                 <select id="subtaskPicker" class="form-control" style="max-width:300px;font-size:12.5px;">
                   <option value="">— Pick subtask —</option>
-                  <?php foreach(SUBTASKS as $st): ?>
+                  <optgroup label="Design Engineer" id="optDesign">
+                  <?php foreach(SUBTASKS_DESIGN as $st): ?>
                     <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
                   <?php endforeach; ?>
+                  </optgroup>
+                  <optgroup label="Site Engineer" id="optSite">
+                  <?php foreach(SUBTASKS_SITE as $st): ?>
+                    <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
+                  <?php endforeach; ?>
+                  </optgroup>
                 </select>
                 <input type="number" id="pickerHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="addFromPicker()">+ Add</button>
@@ -449,15 +456,43 @@ function onEmpChange(){
   const nameEl=document.getElementById('calEmpName');
   if(v){
     const empName=sel.options[sel.selectedIndex].text;
+    const jobTitle=sel.options[sel.selectedIndex].dataset.job||'';
     nameEl.textContent=empName;
     nameEl.style.display='block';
     loadCal();
+    // Filter subtask dropdown based on job title
+    filterSubtasks(jobTitle);
   } else {
     nameEl.style.display='none';
     document.getElementById('calPlaceholder').style.display='block';
     document.getElementById('calContainer').style.display='none';
     empData={};
+    filterSubtasks('');
   }
+}
+
+function filterSubtasks(job) {
+  const picker = document.getElementById('subtaskPicker');
+  const optDesign = document.getElementById('optDesign');
+  const optSite = document.getElementById('optSite');
+  if (!optDesign || !optSite) return;
+
+  // Show/hide optgroups based on job title
+  const isDesign = job.includes('design') || job.includes('engineer') && !job.includes('site');
+  const isSite = job.includes('site');
+
+  if (isSite) {
+    optDesign.style.display = 'none';
+    optSite.style.display = '';
+  } else if (isDesign) {
+    optDesign.style.display = '';
+    optSite.style.display = 'none';
+  } else {
+    // Office/other — show both (they'll use custom mostly)
+    optDesign.style.display = '';
+    optSite.style.display = '';
+  }
+  picker.value = '';
 }
 
 // ── Calendar ─────────────────────────────────────────────────
