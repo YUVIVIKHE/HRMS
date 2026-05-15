@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_l
     $reason   = trim($_POST['reason'] ?? '');
     $errors   = [];
 
-    if (!$typeId)  $errors[] = 'Select a leave type.';
+    if (!$isACL && !$typeId)  $errors[] = 'Select a leave type.';
     if (!$from)    $errors[] = 'From date is required.';
     if (!$to)      $errors[] = 'To date is required.';
     if ($from && $to && $from > $to) $errors[] = 'From date must be before To date.';
