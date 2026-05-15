@@ -9,183 +9,164 @@ $filterTo   = $_GET['to'] ?? date('Y-m-t');
 $filterUser = (int)($_GET['user_id'] ?? 0);
 $filterRole = $_GET['role'] ?? '';
 
-// Determine month/year from the from date
 $month = (int)date('n', strtotime($filterFrom));
 $year  = (int)date('Y', strtotime($filterFrom));
-$daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+$daysInMonth = (int)((strtotime($filterTo) - strtotime($filterFrom)) / 86400) + 1;
 
 // Get employees
 $empWhere = ["u.role IN ('employee','manager')","u.status='active'"];
 $empParams = [];
 if ($filterUser) { $empWhere[] = "u.id=?"; $empParams[] = $filterUser; }
 if ($filterRole) { $empWhere[] = "u.role=?"; $empParams[] = $filterRole; }
-
-$employees = $db->prepare("
-    SELECT u.id AS user_id, u.name, u.role, e.employee_id, e.employee_type, d.name AS dept_name
-    FROM users u
-    JOIN employees e ON e.email = u.email
-    LEFT JOIN departments d ON e.department_id = d.id
-    WHERE " . implode(' AND ', $empWhere) . "
-    ORDER BY u.name
-");
+$employees = $db->prepare("SELECT u.id AS user_id,u.name,u.role,e.employee_id,e.employee_type,d.name AS dept_name FROM users u JOIN employees e ON e.email=u.email LEFT JOIN departments d ON e.department_id=d.id WHERE ".implode(' AND ',$empWhere)." ORDER BY u.name");
 $employees->execute($empParams);
 $employees = $employees->fetchAll(PDO::FETCH_ASSOC);
+if (empty($employees)) { $_SESSION['flash_error']="No employees."; header("Location:attendance.php"); exit; }
 
-if (empty($employees)) {
-    $_SESSION['flash_error'] = "No employees found.";
-    header("Location: attendance.php"); exit;
-}
+$empCount = count(array_filter($employees, fn($e)=>$e['role']==='employee'));
+$mgrCount = count(array_filter($employees, fn($e)=>$e['role']==='manager'));
 
-// Get holidays for the month
+// Holidays
 $holidays = [];
-try {
-    $hStmt = $db->prepare("SELECT holiday_date, title FROM holidays WHERE holiday_date BETWEEN ? AND ?");
-    $hStmt->execute([$filterFrom, $filterTo]);
-    foreach ($hStmt->fetchAll() as $h) $holidays[$h['holiday_date']] = $h['title'];
-} catch (Exception $e) {}
+try { $h=$db->prepare("SELECT holiday_date,title FROM holidays WHERE holiday_date BETWEEN ? AND ?"); $h->execute([$filterFrom,$filterTo]); foreach($h->fetchAll() as $r) $holidays[$r['holiday_date']]=$r['title']; } catch(Exception $e){}
 
-// Get all attendance logs for the month
+// Attendance logs
 $allLogs = [];
-$logStmt = $db->prepare("SELECT user_id, log_date, clock_in, clock_out, work_seconds, status FROM attendance_logs WHERE log_date BETWEEN ? AND ?");
-$logStmt->execute([$filterFrom, $filterTo]);
-foreach ($logStmt->fetchAll() as $l) { $allLogs[$l['user_id']][$l['log_date']] = $l; }
+$l=$db->prepare("SELECT user_id,log_date,clock_in,clock_out,work_seconds,status FROM attendance_logs WHERE log_date BETWEEN ? AND ?");
+$l->execute([$filterFrom,$filterTo]); foreach($l->fetchAll() as $r) $allLogs[$r['user_id']][$r['log_date']]=$r;
 
-// Get all approved leaves for the month
+// Leaves
 $allLeaves = [];
-try {
-    $lvStmt = $db->prepare("SELECT la.user_id, la.from_date, la.to_date, lt.name AS leave_type FROM leave_applications la LEFT JOIN leave_types lt ON la.leave_type_id=lt.id WHERE la.status='approved' AND la.from_date<=? AND la.to_date>=?");
-    $lvStmt->execute([$filterTo, $filterFrom]);
-    foreach ($lvStmt->fetchAll() as $lv) {
-        $d = new DateTime(max($filterFrom, $lv['from_date']));
-        $e = new DateTime(min($filterTo, $lv['to_date']));
-        while ($d <= $e) { $allLeaves[$lv['user_id']][$d->format('Y-m-d')] = $lv['leave_type'] ?? 'Leave'; $d->modify('+1 day'); }
-    }
-} catch (Exception $e) {}
+try { $lv=$db->prepare("SELECT la.user_id,la.from_date,la.to_date,lt.name AS leave_type FROM leave_applications la LEFT JOIN leave_types lt ON la.leave_type_id=lt.id WHERE la.status='approved' AND la.from_date<=? AND la.to_date>=?"); $lv->execute([$filterTo,$filterFrom]);
+foreach($lv->fetchAll() as $r){ $d=new DateTime(max($filterFrom,$r['from_date']));$e=new DateTime(min($filterTo,$r['to_date'])); while($d<=$e){$allLeaves[$r['user_id']][$d->format('Y-m-d')]=$r['leave_type']??'Leave';$d->modify('+1 day');} }
+} catch(Exception $e){}
 
-function e($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+function e($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 
-$monthName = date('F Y', strtotime($filterFrom));
-$fname = 'Attendance_' . date('M_Y', strtotime($filterFrom)) . '.xls';
+$period = date('d M Y',strtotime($filterFrom)).' to '.date('d M Y',strtotime($filterTo))." ($daysInMonth days)";
+$fname = 'Attendance_'.date('M_Y',strtotime($filterFrom)).'.xls';
 header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-header('Content-Disposition: attachment; filename="' . $fname . '"');
+header('Content-Disposition: attachment; filename="'.$fname.'"');
 header('Cache-Control: max-age=0');
 
 ob_start();
-echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
+echo '<?xml version="1.0" encoding="UTF-8"?>'."\n".'<?mso-application progid="Excel.Sheet"?>'."\n";
 ?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
 <Styles>
-  <Style ss:ID="title"><Font ss:Bold="1" ss:Size="14" ss:Color="#4F46E5"/></Style>
-  <Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="9"/><Interior ss:Color="#4F46E5" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:WrapText="1"/></Style>
-  <Style ss:ID="d"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders><Alignment ss:Vertical="Center"/></Style>
-  <Style ss:ID="dAlt"><Interior ss:Color="#F9FAFB" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
-  <Style ss:ID="present"><Font ss:Color="#059669" ss:Bold="1"/><Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-  <Style ss:ID="absent"><Font ss:Color="#DC2626" ss:Bold="1"/><Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-  <Style ss:ID="holiday"><Font ss:Color="#D97706" ss:Bold="1"/><Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-  <Style ss:ID="leave"><Font ss:Color="#7C3AED" ss:Bold="1"/><Interior ss:Color="#F3E8FF" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-  <Style ss:ID="weekend"><Font ss:Color="#6B7280"/><Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-  <Style ss:ID="sum"><Font ss:Bold="1" ss:Size="10"/><Interior ss:Color="#EDE9FE" ss:Pattern="Solid"/></Style>
+<Style ss:ID="titleBar"><Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/><Interior ss:Color="#1E40AF" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="info"><Font ss:Size="10"/><Interior ss:Color="#F0F4FF" ss:Pattern="Solid"/></Style>
+<Style ss:ID="hdr"><Font ss:Bold="1" ss:Size="9" ss:Color="#FFFFFF"/><Interior ss:Color="#374151" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+<Style ss:ID="d"><Alignment ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
+<Style ss:ID="dAlt"><Interior ss:Color="#F9FAFB" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
+<Style ss:ID="present"><Font ss:Bold="1" ss:Color="#059669"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="absent"><Font ss:Bold="1" ss:Color="#DC2626"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="weekend"><Font ss:Bold="1" ss:Color="#9333EA"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="holiday"><Font ss:Bold="1" ss:Color="#D97706"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="onleave"><Font ss:Bold="1" ss:Color="#2563EB"/><Alignment ss:Horizontal="Center"/></Style>
+<Style ss:ID="sumBar"><Font ss:Bold="1" ss:Size="9" ss:Color="#FFFFFF"/><Interior ss:Color="#059669" ss:Pattern="Solid"/></Style>
 </Styles>
-<?php foreach($employees as $emp):
-  $uid = $emp['user_id'];
-  $presentDays=0;$absentDays=0;$leaveDays=0;$holidayDays=0;$weekendDays=0;$totalWorkSec=0;
-?>
-<Worksheet ss:Name="<?= e(substr($emp['name'],0,28)) ?>">
+<Worksheet ss:Name="Attendance Report">
 <Table>
-<Column ss:Width="60"/><Column ss:Width="140"/><Column ss:Width="70"/><Column ss:Width="100"/><Column ss:Width="80"/><Column ss:Width="50"/><Column ss:Width="80"/><Column ss:Width="80"/><Column ss:Width="70"/><Column ss:Width="100"/>
+<Column ss:Width="130"/><Column ss:Width="70"/><Column ss:Width="80"/><Column ss:Width="130"/><Column ss:Width="75"/><Column ss:Width="75"/><Column ss:Width="75"/><Column ss:Width="75"/><Column ss:Width="75"/><Column ss:Width="140"/>
 
-<Row><Cell ss:StyleID="title"><Data ss:Type="String">ATTENDANCE — <?= e($monthName) ?></Data></Cell></Row>
-<Row>
-  <Cell><Data ss:Type="String">Emp ID: <?= e($emp['employee_id']) ?></Data></Cell>
-  <Cell><Data ss:Type="String">Name: <?= e($emp['name']) ?></Data></Cell>
-  <Cell><Data ss:Type="String">Type: <?= e($emp['employee_type']) ?></Data></Cell>
-  <Cell><Data ss:Type="String">Dept: <?= e($emp['dept_name']??'') ?></Data></Cell>
-</Row>
-<Row></Row>
+<!-- Title -->
+<Row ss:Height="22"><Cell ss:StyleID="titleBar" ss:MergeAcross="9"><Data ss:Type="String">All Attendance Report (Employees &amp; Managers)</Data></Cell></Row>
+<Row><Cell ss:StyleID="info"><Data ss:Type="String">Period</Data></Cell><Cell ss:StyleID="info" ss:MergeAcross="4"><Data ss:Type="String"><?=e($period)?></Data></Cell></Row>
+<Row><Cell ss:StyleID="info"><Data ss:Type="String">Total People</Data></Cell><Cell ss:StyleID="info" ss:MergeAcross="4"><Data ss:Type="String"><?=count($employees)?> (<?=$empCount?> Employees + <?=$mgrCount?> Managers)</Data></Cell></Row>
 
 <!-- Headers -->
 <Row ss:Height="20">
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Emp ID</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Employee Name</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Type</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Department</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Date</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Day</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Clock In</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Clock Out</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Work Hrs</Data></Cell>
-  <Cell ss:StyleID="hdr"><Data ss:Type="String">Status</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Name</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Type</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Employee ID</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Department</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Date</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Day</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Clock In</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Clock Out</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Work Hours</Data></Cell>
+<Cell ss:StyleID="hdr"><Data ss:Type="String">Status</Data></Cell>
 </Row>
 
-<?php for($day=1;$day<=$daysInMonth;$day++):
-  $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $day);
-  $dow = (int)date('N', strtotime($dateStr));
-  $dayName = date('D', strtotime($dateStr));
-  $isSunday = ($dow === 7);
-  $isSaturday = ($dow === 6);
-  $isHoliday = isset($holidays[$dateStr]);
-  $isLeave = isset($allLeaves[$uid][$dateStr]);
-  $log = $allLogs[$uid][$dateStr] ?? null;
+<?php
+$rowIdx=0;
+foreach($employees as $emp):
+  $uid=$emp['user_id'];
+  $presentDays=0;$absentDays=0;$leaveDays=0;$holidayDays=0;$weekendDays=0;$totalWorkSec=0;
 
-  $clockIn = $log ? ($log['clock_in'] ? date('h:i A', strtotime($log['clock_in'])) : '') : '';
-  $clockOut = $log ? ($log['clock_out'] ? date('h:i A', strtotime($log['clock_out'])) : '') : '';
-  $workHrs = $log && $log['work_seconds'] ? sprintf('%d:%02d', floor($log['work_seconds']/3600), floor(($log['work_seconds']%3600)/60)) : '';
+  $curDate=new DateTime($filterFrom);
+  $endDate=new DateTime($filterTo);
+  while($curDate<=$endDate):
+    $dateStr=$curDate->format('Y-m-d');
+    $dow=(int)$curDate->format('N');
+    $dayName=$curDate->format('l');
+    $dateDisp=$curDate->format('j-M-y');
+    $isSun=($dow===7);$isSat=($dow===6);
+    $isHol=isset($holidays[$dateStr]);
+    $isLv=isset($allLeaves[$uid][$dateStr]);
+    $log=$allLogs[$uid][$dateStr]??null;
 
-  // Determine status
-  $status = '';
-  $statusStyle = 'd';
-  if ($isSunday || $isSaturday) {
-    $status = $isSunday ? 'Sunday' : 'Saturday';
-    $statusStyle = 'weekend'; $weekendDays++;
-  } elseif ($isHoliday) {
-    $status = 'Holiday - ' . $holidays[$dateStr];
-    $statusStyle = 'holiday'; $holidayDays++;
-  } elseif ($isLeave) {
-    $status = 'Leave - ' . $allLeaves[$uid][$dateStr];
-    $statusStyle = 'leave'; $leaveDays++;
-  } elseif ($log && $log['clock_in']) {
-    $status = 'Present';
-    if ($log['status'] === 'late') $status = 'Present (Late)';
-    if ($log['status'] === 'remote') $status = 'Present (Remote)';
-    $statusStyle = 'present'; $presentDays++;
-    $totalWorkSec += (int)($log['work_seconds'] ?? 0);
-  } else {
-    // Only mark absent for past dates
-    if ($dateStr <= date('Y-m-d')) { $status = 'Absent'; $statusStyle = 'absent'; $absentDays++; }
-  }
+    $clockIn=$log&&$log['clock_in']?date('h:i A',strtotime($log['clock_in'])):'-';
+    $clockOut=$log&&$log['clock_out']?date('h:i A',strtotime($log['clock_out'])):'-';
+    $workH=$log&&$log['work_seconds']?sprintf('%d:%02d',floor($log['work_seconds']/3600),floor(($log['work_seconds']%3600)/60)):'-';
 
-  $rs = ($day % 2 === 0) ? 'dAlt' : 'd';
+    $status='';$stStyle='absent';
+    if($isSun||$isSat){
+      $status='ABSENT (Weekend)';$stStyle='weekend';$weekendDays++;
+      if($log&&$log['clock_in']){$status='PRESENT (Weekend)';$stStyle='present';$presentDays++;$totalWorkSec+=(int)($log['work_seconds']??0);$weekendDays--;}
+    }elseif($isHol){
+      $status='HOLIDAY ('.($holidays[$dateStr]).')';$stStyle='holiday';$holidayDays++;
+    }elseif($isLv){
+      $status='ON LEAVE ('.$allLeaves[$uid][$dateStr].')';$stStyle='onleave';$leaveDays++;
+    }elseif($log&&$log['clock_in']){
+      $status='PRESENT';
+      if($log['status']==='late')$status='PRESENT (Late)';
+      if($log['status']==='remote')$status='PRESENT (Remote)';
+      $stStyle='present';$presentDays++;$totalWorkSec+=(int)($log['work_seconds']??0);
+    }else{
+      if($dateStr<=date('Y-m-d')){$status='ABSENT (Absent)';$stStyle='absent';$absentDays++;}
+    }
+
+    $rs=($rowIdx%2===0)?'d':'dAlt';$rowIdx++;
 ?>
 <Row>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= e($emp['employee_id']) ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= e($emp['name']) ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= e($emp['employee_type']) ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= e($emp['dept_name']??'') ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= $dateStr ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= $dayName ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= $clockIn ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= $clockOut ?></Data></Cell>
-  <Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?= $workHrs ?></Data></Cell>
-  <Cell ss:StyleID="<?=$statusStyle?>"><Data ss:Type="String"><?= e($status) ?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=e($emp['name'])?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=ucfirst($emp['role'])?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=e($emp['employee_id'])?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=e($emp['dept_name']??'')?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=$dateDisp?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=$dayName?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=$clockIn?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=$clockOut?></Data></Cell>
+<Cell ss:StyleID="<?=$rs?>"><Data ss:Type="String"><?=$workH?></Data></Cell>
+<Cell ss:StyleID="<?=$stStyle?>"><Data ss:Type="String"><?=e($status)?></Data></Cell>
 </Row>
-<?php endfor;?>
+<?php $curDate->modify('+1 day'); endwhile;
 
-<!-- Summary -->
+  // Summary row for this employee
+  $totalDaysWorked=$presentDays;
+  $rate=$daysInMonth>0?round(($presentDays/($daysInMonth-$weekendDays-$holidayDays))*100):0;
+?>
+<Row>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String">SUMMARY: <?=e($emp['name'])?></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String">Present: <?=$presentDays?> days</Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String">Absent: <?=$absentDays?> days</Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="sumBar"><Data ss:Type="String">Rate: <?=$rate?>%</Data></Cell>
+</Row>
 <Row></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">SUMMARY</Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Present Days</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="Number"><?=$presentDays?></Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Absent Days</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="Number"><?=$absentDays?></Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Leave Days</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="Number"><?=$leaveDays?></Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Holidays</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="Number"><?=$holidayDays?></Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Weekends</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="Number"><?=$weekendDays?></Data></Cell></Row>
-<Row><Cell ss:StyleID="sum"><Data ss:Type="String">Total Work Hours</Data></Cell><Cell ss:StyleID="sum"><Data ss:Type="String"><?=sprintf('%d:%02d',floor($totalWorkSec/3600),floor(($totalWorkSec%3600)/60))?></Data></Cell></Row>
+<?php endforeach;?>
 
 </Table>
 </Worksheet>
-<?php endforeach;?>
 </Workbook>
 <?php
-$xml = ob_get_clean();
-header('Content-Length: ' . strlen($xml));
+$xml=ob_get_clean();
+header('Content-Length: '.strlen($xml));
 echo $xml; exit;
