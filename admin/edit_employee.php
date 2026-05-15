@@ -201,6 +201,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ── Department change: no users.manager_id to sync (dept-based relationship) ──
         // The employee's department is already updated in the employees table above.
 
+        // Sync status to users table
+        $empStatus = trim($_POST['status'] ?? 'Active');
+        $userStatus = (strtolower($empStatus) === 'active') ? 'active' : 'inactive';
+        $syncEmail2 = $updatedEmail ?: $currentEmpEmail;
+        if ($syncEmail2) {
+            $db->prepare("UPDATE users SET status=? WHERE LOWER(email)=?")->execute([$userStatus, strtolower($syncEmail2)]);
+        }
+
         $_SESSION['flash_success'] = "Employee updated successfully.";
         header("Location: edit_employee.php?id=$id"); exit;
     } catch (PDOException $e) {
@@ -399,15 +407,14 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
               </select>
             </div>
             <div class="form-group"><label>Status</label>
-              <select name="status" class="form-control">
+              <select name="status" id="empStatus" class="form-control" onchange="onStatusChange(this.value)">
                 <option value="active" <?= sel($emp,'status','active') ?>>Active</option>
                 <option value="inactive" <?= sel($emp,'status','inactive') ?>>Inactive</option>
-                <option value="terminated" <?= sel($emp,'status','terminated') ?>>Terminated</option>
               </select>
             </div>
             <div class="form-group"><label>Date of Joining</label><input type="date" name="date_of_joining" class="form-control" value="<?= val($emp,'date_of_joining') ?>"></div>
             <div class="form-group"><label>Date of Confirmation</label><input type="date" name="date_of_confirmation" class="form-control" value="<?= val($emp,'date_of_confirmation') ?>"></div>
-            <div class="form-group"><label>Date of Exit</label><input type="date" name="date_of_exit" class="form-control" value="<?= val($emp,'date_of_exit') ?>"></div>
+            <div class="form-group" id="exitDateGroup"><label>Date of Exit <span id="exitReq" style="display:none;color:var(--red);">*</span></label><input type="date" name="date_of_exit" id="dateOfExit" class="form-control" value="<?= val($emp,'date_of_exit') ?>"></div>
             <div class="form-group"><label>Direct Manager</label><input type="text" name="direct_manager_name" class="form-control" value="<?= val($emp,'direct_manager_name') ?>"></div>
             <div class="form-group"><label>Location</label><input type="text" name="location" class="form-control" value="<?= val($emp,'location') ?>"></div>
             <div class="form-group"><label>Base Location</label><input type="text" name="base_location" class="form-control" value="<?= val($emp,'base_location') ?>"></div>
@@ -497,5 +504,41 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
   </div>
 </div>
 </div>
+<script>
+function onStatusChange(val) {
+  const exitGroup = document.getElementById('exitDateGroup');
+  const exitInput = document.getElementById('dateOfExit');
+  const exitReq = document.getElementById('exitReq');
+  if (val === 'inactive') {
+    exitGroup.style.border = '2px solid var(--red)';
+    exitGroup.style.borderRadius = '8px';
+    exitGroup.style.padding = '8px';
+    exitGroup.style.background = '#fef2f2';
+    exitReq.style.display = 'inline';
+    exitInput.required = true;
+    exitInput.focus();
+    exitInput.scrollIntoView({behavior:'smooth', block:'center'});
+  } else {
+    exitGroup.style.border = '';
+    exitGroup.style.borderRadius = '';
+    exitGroup.style.padding = '';
+    exitGroup.style.background = '';
+    exitReq.style.display = 'none';
+    exitInput.required = false;
+  }
+}
+// On form submit validate
+document.querySelector('form')?.addEventListener('submit', function(e) {
+  const status = document.getElementById('empStatus').value;
+  const exitDate = document.getElementById('dateOfExit').value;
+  if (status === 'inactive' && !exitDate) {
+    e.preventDefault();
+    alert('Date of Exit is required when setting status to Inactive.');
+    document.getElementById('dateOfExit').focus();
+  }
+});
+// Init on load
+if (document.getElementById('empStatus').value === 'inactive') onStatusChange('inactive');
+</script>
 </body>
 </html>
