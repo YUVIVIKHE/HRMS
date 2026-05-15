@@ -171,6 +171,9 @@ if (!function_exists('fmtHrs')) {
       </div>
     </div>
 
+    <!-- Attendance Calendar -->
+    <?php include __DIR__ . '/../shared/attendance_calendar.php'; ?>
+
     <!-- Monthly log -->
     <div class="table-wrap">
       <div class="table-toolbar"><h2>This Month's Log</h2></div>
