@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $start     = $_POST['start_date']         ?? '';
     $deadline  = $_POST['deadline_date']      ?? '';
     $hrRate    = max(0, (float)($_POST['hr_rate'] ?? 0));
+    $budgetHrs = max(0, (float)($_POST['budget_hours'] ?? 0));
     $status    = in_array($_POST['status']??'', ['Planning','Active','On Hold','Completed','Cancelled']) ? $_POST['status'] : 'Planning';
     $desc      = trim($_POST['description']   ?? '');
     $errors    = [];
@@ -69,12 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             if ($editId) {
-                $db->prepare("UPDATE projects SET project_name=?,project_code=?,client_name=?,priority=?,manager_id=?,start_date=?,deadline_date=?,total_hours=?,hr_rate=?,status=?,description=? WHERE id=?")
-                   ->execute([$name,$code,$client?:null,$priority,$managerId,$start,$deadline,$totalHours,$hrRate,$status,$desc?:null,$editId]);
+                $db->prepare("UPDATE projects SET project_name=?,project_code=?,client_name=?,priority=?,manager_id=?,start_date=?,deadline_date=?,total_hours=?,hr_rate=?,budget_hours=?,status=?,description=? WHERE id=?")
+                   ->execute([$name,$code,$client?:null,$priority,$managerId,$start,$deadline,$totalHours,$hrRate,$budgetHrs?:$totalHours,$status,$desc?:null,$editId]);
                 $_SESSION['flash_success'] = "Project updated. Total working hours: ".number_format($totalHours,1);
             } else {
-                $db->prepare("INSERT INTO projects (project_name,project_code,client_name,priority,manager_id,start_date,deadline_date,total_hours,hr_rate,status,description) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-                   ->execute([$name,$code,$client?:null,$priority,$managerId,$start,$deadline,$totalHours,$hrRate,$status,$desc?:null]);
+                $db->prepare("INSERT INTO projects (project_name,project_code,client_name,priority,manager_id,start_date,deadline_date,total_hours,hr_rate,budget_hours,status,description) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+                   ->execute([$name,$code,$client?:null,$priority,$managerId,$start,$deadline,$totalHours,$hrRate,$budgetHrs?:$totalHours,$status,$desc?:null]);
                 $_SESSION['flash_success'] = "Project '$name' created. Total working hours: ".number_format($totalHours,1);
             }
             header("Location: projects.php"); exit;
@@ -184,7 +185,7 @@ $pageTitle  = $isEdit ? 'Edit Project' : 'New Project';
       </div>
 
       <div class="card" style="margin-bottom:20px;">
-        <div class="card-header"><div><h2>Timeline &amp; Hours</h2><p>Working hours are auto-calculated excluding Sundays and company holidays.</p></div></div>
+        <div class="card-header"><div><h2>Timeline &amp; Hours</h2><p>Working hours are auto-calculated excluding Sundays and company holidays. Budget hours can be set manually.</p></div></div>
         <div class="card-body">
           <div class="form-grid">
 
@@ -208,13 +209,20 @@ $pageTitle  = $isEdit ? 'Edit Project' : 'New Project';
             </div>
 
             <div class="form-group">
+              <label>Budget Hours</label>
+              <input type="number" name="budget_hours" id="budgetHrs" class="form-control" min="0" step="0.5" value="<?= htmlspecialchars($project['budget_hours'] ?? $project['total_hours'] ?? '0') ?>" onchange="calcCost()" style="font-weight:700;color:var(--brand);">
+              <span style="font-size:11.5px;color:var(--muted-light);">Manual budget hours for cost estimation</span>
+            </div>
+
+            <div class="form-group">
               <label>HR Rate (₹/hr)</label>
               <input type="number" name="hr_rate" id="hrRate" class="form-control" min="0" step="0.01" value="<?= htmlspecialchars($project['hr_rate']??'0') ?>" onchange="calcCost()">
             </div>
 
             <div class="form-group">
               <label>Estimated Cost</label>
-              <input type="text" id="estCost" class="form-control" readonly style="background:var(--surface-2);color:var(--green-text);font-weight:700;cursor:not-allowed;" value="<?= $project?'₹'.number_format($project['total_hours']*$project['hr_rate'],2):'—' ?>">
+              <input type="text" id="estCost" class="form-control" readonly style="background:var(--surface-2);color:var(--green-text);font-weight:700;cursor:not-allowed;" value="<?= $project?'₹'.number_format(($project['budget_hours']??$project['total_hours'])*$project['hr_rate'],2):'—' ?>">
+              <span style="font-size:11.5px;color:var(--muted-light);">Budget Hours × HR Rate</span>
             </div>
 
           </div>
@@ -263,9 +271,9 @@ function calcHours() {
 }
 
 function calcCost() {
-  const hrs  = parseFloat(document.getElementById('totalHrsDisplay').dataset.raw || 0);
+  const budgetHrs = parseFloat(document.getElementById('budgetHrs').value || 0);
   const rate = parseFloat(document.getElementById('hrRate').value || 0);
-  document.getElementById('estCost').value = hrs && rate ? '₹'+( hrs*rate ).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—';
+  document.getElementById('estCost').value = budgetHrs && rate ? '₹'+( budgetHrs*rate ).toLocaleString('en-IN',{minimumFractionDigits:2}) : '—';
 }
 
 function validateProject() {
