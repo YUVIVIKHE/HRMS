@@ -348,10 +348,13 @@ foreach ($ulRows as $r) {
             Use My Current Location
           </button>
           <!-- Map -->
-          <div id="addMapWrap" style="border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px;">
-            <div id="addMap" style="height:200px;width:100%;"></div>
+          <div id="addMapWrap" style="border-radius:10px;overflow:hidden;border:1.5px solid var(--border);margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+            <div id="addMap" style="height:250px;width:100%;"></div>
           </div>
-          <span style="font-size:11px;color:var(--muted);">Click on the map to set location, or drag the marker.</span>
+          <span style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;margin-bottom:14px;">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Click on map to set location or drag the marker to adjust
+          </span>
         </div>
         <div class="form-check">
           <input type="checkbox" name="is_remote" id="add_remote" onchange="toggleGps(this,'gpsFields')">
