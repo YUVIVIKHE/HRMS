@@ -8,7 +8,7 @@ $db = getDB();
 // ── Fetch all active leave types (dynamic) ───────────────────
 $leaveTypes = $db->query("SELECT id, name, color FROM leave_types ORDER BY id")->fetchAll();
 
-// ── Fetch all employees/managers with their balances ─────────
+// ── Fetch all employees AND managers with their balances ─────────
 $users = $db->query("
     SELECT u.id, u.name, u.email, u.role,
            e.employee_id, e.job_title, d.name AS department
@@ -27,6 +27,22 @@ foreach ($balRows as $b) {
         'balance' => (float)$b['balance'],
         'used'    => (float)$b['used'],
     ];
+}
+
+// ── ACL balances per user ────────────────────────────────────
+$aclMap = [];
+foreach ($users as $u) {
+    $uid = $u['id'];
+    $aclHrs = 0;
+    // OT on working days
+    try { $ot = $db->prepare("SELECT COALESCE(SUM(work_seconds - 32400),0) FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)"); $ot->execute([$uid]); $aclHrs += round((float)$ot->fetchColumn() / 3600, 2); } catch(Exception $e){}
+    // Approved ACL requests
+    try { $ar = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'"); $ar->execute([$uid]); $aclHrs += (float)$ar->fetchColumn(); } catch(Exception $e){}
+    // ACL used
+    $aclUsed = 0;
+    try { $au = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')"); $au->execute([$uid]); $aclUsed = (float)$au->fetchColumn(); } catch(Exception $e){}
+    $aclEarned = round($aclHrs / 9, 2);
+    $aclMap[$uid] = ['earned' => $aclEarned, 'used' => $aclUsed, 'available' => max(0, $aclEarned - $aclUsed)];
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -141,8 +157,8 @@ echo '<Cell ss:MergeAcross="4" ss:StyleID="sub_hdr"><Data ss:Type="String">EMPLO
 foreach ($leaveTypes as $lt) {
     echo '<Cell ss:MergeAcross="2" ss:StyleID="sub_hdr"><Data ss:Type="String">'.esc2(strtoupper($lt['name'])).'</Data></Cell>';
 }
+echo '<Cell ss:MergeAcross="2" ss:StyleID="sub_hdr"><Data ss:Type="String">ACL (COMPENSATORY)</Data></Cell>';
 echo '<Cell ss:MergeAcross="2" ss:StyleID="sub_hdr"><Data ss:Type="String">TOTAL</Data></Cell>';
-echo '<Cell ss:StyleID="sub_hdr"><Data ss:Type="String"></Data></Cell>';
 echo '</Row>'."\n";
 
 // ── Column headers ───────────────────────────────────────────
@@ -155,18 +171,23 @@ foreach ($leaveTypes as $lt) {
     echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Used</Data></Cell>';
     echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Balance</Data></Cell>';
 }
+// ACL columns
+echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Earned</Data></Cell>';
+echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Used</Data></Cell>';
+echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Available</Data></Cell>';
+// Total columns
 echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Total Credited</Data></Cell>';
 echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Total Used</Data></Cell>';
 echo '<Cell ss:StyleID="col_hdr"><Data ss:Type="String">Total Balance</Data></Cell>';
 echo '</Row>'."\n";
 
 // ── Data rows ────────────────────────────────────────────────
-// Summary accumulators per leave type
 $typeTotals = [];
 foreach ($leaveTypes as $lt) {
     $typeTotals[$lt['id']] = ['credited'=>0,'used'=>0,'balance'=>0];
 }
 $grandCredited = 0; $grandUsed = 0; $grandBalance = 0;
+$aclTotalEarned = 0; $aclTotalUsed = 0;
 
 foreach ($users as $idx => $u) {
     $isAlt = ($idx % 2 === 1);
@@ -205,6 +226,25 @@ foreach ($users as $idx => $u) {
     $grandUsed     += $rowTotalUsed;
     $grandBalance  += $rowTotalBalance;
 
+    // ACL columns (only for employees, not managers)
+    $acl = ($u['role'] === 'employee') ? ($aclMap[$u['id']] ?? ['earned'=>0,'used'=>0,'available'=>0]) : ['earned'=>0,'used'=>0,'available'=>0];
+    if ($u['role'] === 'employee') {
+        $aclTotalEarned += $acl['earned'];
+        $aclTotalUsed += $acl['used'];
+        echo '<Cell ss:StyleID="'.$sn.'"><Data ss:Type="Number">'.$acl['earned'].'</Data></Cell>';
+        echo '<Cell ss:StyleID="'.($acl['used']>0?'red':$sn).'"><Data ss:Type="Number">'.$acl['used'].'</Data></Cell>';
+        echo '<Cell ss:StyleID="'.($acl['available']>0?'green':$sn).'"><Data ss:Type="Number">'.$acl['available'].'</Data></Cell>';
+    } else {
+        echo '<Cell ss:StyleID="'.$sn.'"><Data ss:Type="String">—</Data></Cell>';
+        echo '<Cell ss:StyleID="'.$sn.'"><Data ss:Type="String">—</Data></Cell>';
+        echo '<Cell ss:StyleID="'.$sn.'"><Data ss:Type="String">—</Data></Cell>';
+    }
+
+    // Total columns (include ACL)
+    $rowTotalCredited += $acl['earned'];
+    $rowTotalUsed += $acl['used'];
+    $rowTotalBalance += $acl['available'];
+
     echo '<Cell ss:StyleID="'.$sn.'"><Data ss:Type="Number">'.round($rowTotalCredited,1).'</Data></Cell>';
     echo '<Cell ss:StyleID="red"><Data ss:Type="Number">'.round($rowTotalUsed,1).'</Data></Cell>';
     echo '<Cell ss:StyleID="green"><Data ss:Type="Number">'.round($rowTotalBalance,1).'</Data></Cell>';
@@ -220,8 +260,12 @@ foreach ($leaveTypes as $lt) {
     echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($typeTotals[$lt['id']]['used'],1).'</Data></Cell>';
     echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($typeTotals[$lt['id']]['balance'],1).'</Data></Cell>';
 }
-echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($grandCredited,1).'</Data></Cell>';
-echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($grandUsed,1).'</Data></Cell>';
+// ACL totals
+echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($aclTotalEarned,1).'</Data></Cell>';
+echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($aclTotalUsed,1).'</Data></Cell>';
+echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($aclTotalEarned - $aclTotalUsed,1).'</Data></Cell>';
+echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($grandCredited + $aclTotalEarned,1).'</Data></Cell>';
+echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($grandUsed + $aclTotalUsed,1).'</Data></Cell>';
 echo '<Cell ss:StyleID="summary"><Data ss:Type="Number">'.round($grandBalance,1).'</Data></Cell>';
 echo '</Row>'."\n";
 ?>
