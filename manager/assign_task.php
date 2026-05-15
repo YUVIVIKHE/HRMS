@@ -266,10 +266,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
                 <input type="number" id="pickerHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="addFromPicker()">+ Add</button>
               </div>
-              <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-                <input type="text" id="customName" class="form-control" placeholder="Custom task name" style="max-width:300px;font-size:12.5px;">
+              <div id="customTaskRow" style="display:none;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                <input type="text" id="customName" class="form-control" placeholder="Enter task name" style="max-width:300px;font-size:12.5px;">
                 <input type="number" id="customHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="addCustom()">+ Add Custom</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="addCustom()">+ Add</button>
               </div>
 
               <div id="taskList"></div>
@@ -472,17 +472,24 @@ const TASKS_SITE = <?= json_encode(SUBTASKS_SITE) ?>;
 function updateSubtaskList() {
   const role = document.getElementById('rolePicker').value;
   const picker = document.getElementById('subtaskPicker');
+  const customRow = document.getElementById('customTaskRow');
   picker.innerHTML = '<option value="">— Pick subtask —</option>';
 
   let tasks = [];
   if (role === 'design') tasks = TASKS_DESIGN;
   else if (role === 'site') tasks = TASKS_SITE;
 
-  if (tasks.length > 0) {
+  if (role === 'custom') {
+    // Show custom fields, hide dropdown
+    picker.style.display = 'none';
+    customRow.style.display = 'flex';
+  } else if (tasks.length > 0) {
     tasks.forEach(t => { picker.innerHTML += '<option value="'+t+'">'+t+'</option>'; });
     picker.style.display = '';
+    customRow.style.display = 'none';
   } else {
     picker.style.display = 'none';
+    customRow.style.display = 'none';
   }
 }
 
