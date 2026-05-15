@@ -97,7 +97,7 @@ try {
       </a>
       <a href="acl_requests.php" class="<?= $p==='acl_requests.php'?'active':'' ?>">
         <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
-        ACL Requests
+        ACL Activity
       </a>    </nav>
   </div>
 
