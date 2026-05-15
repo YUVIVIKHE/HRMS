@@ -78,9 +78,14 @@ body {
 .sidebar-logo {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 20px 20px 18px;
+  padding: 20px 16px 18px;
   border-bottom: 1px solid var(--border-light);
+}
+.sidebar-logo img {
+  display: block;
+  margin: 0 auto;
 }
 .sidebar-logo .logo-mark {
   width: 36px; height: 36px;
