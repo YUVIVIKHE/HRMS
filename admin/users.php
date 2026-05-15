@@ -27,10 +27,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'&&($_POST['action']??'')==='add_user'){
       $db->prepare("INSERT INTO users(name,email,password,role,status)VALUES(?,?,?,?,?)")->execute([$name,$email,$hash,$role,'active']);
       $newUserId=$db->lastInsertId();
 
-      // Create employee record
+      // Create employee record with auto-generated employee_id
       $nameParts=explode(' ',$name,2);
       $firstName=$nameParts[0];$lastName=$nameParts[1]??'';
-      $db->prepare("INSERT IGNORE INTO employees(first_name,last_name,email)VALUES(?,?,?)")->execute([$firstName,$lastName,$email]);
+      
+      // Generate employee_id from user_code pattern: EMP001, EMP002, etc.
+      $lastCode=$db->query("SELECT employee_id FROM employees WHERE employee_id REGEXP '^EMP[0-9]+$' ORDER BY CAST(SUBSTRING(employee_id,4) AS UNSIGNED) DESC LIMIT 1")->fetchColumn();
+      $nextNum=$lastCode?(int)substr($lastCode,3)+1:1;
+      $empId='EMP'.str_pad($nextNum,3,'0',STR_PAD_LEFT);
+      
+      $db->prepare("INSERT IGNORE INTO employees(first_name,last_name,email,employee_id,user_code)VALUES(?,?,?,?,?)")->execute([$firstName,$lastName,$email,$empId,$empId]);
 
       // Send email
       try{
