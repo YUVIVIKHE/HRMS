@@ -10,16 +10,16 @@ try {
 <aside class="sidebar">
   <div class="sidebar-logo">
     <?php if($_companyLogo): ?>
-      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:36px;max-width:140px;">
+      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:32px;max-width:100%;object-fit:contain;">
     <?php else: ?>
     <div class="logo-mark">
       <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     </div>
-    <?php endif; ?>
     <div class="logo-text">
       <strong>HRMS Portal</strong>
       <span>Admin Console</span>
     </div>
+    <?php endif; ?>
   </div>
 
   <div class="sidebar-section">

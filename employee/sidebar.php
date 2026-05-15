@@ -5,13 +5,13 @@ try { $__db = getDB(); $__ls = $__db->prepare("SELECT setting_value FROM app_set
 <aside class="sidebar">
   <div class="sidebar-logo">
     <?php if($_companyLogo): ?>
-      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:36px;max-width:140px;">
+      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:32px;max-width:100%;object-fit:contain;">
     <?php else: ?>
     <div class="logo-mark" style="background:linear-gradient(135deg,#059669,#10b981);">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     </div>
-    <?php endif; ?>
     <div class="logo-text"><strong>HRMS Portal</strong><span>My Workspace</span></div>
+    <?php endif; ?>
   </div>
 
   <div class="sidebar-section">
