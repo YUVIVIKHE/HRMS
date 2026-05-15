@@ -94,7 +94,12 @@ $tasks = $tasks->fetchAll();
 $totalTasks = count($tasks);
 $totalAssigned = array_sum(array_column($tasks, 'hours'));
 $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
-$totalExtra    = max(0, $totalWorked - $totalAssigned);
+// Per-task extra: sum of (worked - assigned) for tasks where worked > assigned
+$totalExtra = 0;
+foreach ($tasks as $t) {
+    $extra = (float)$t['utilized_hours'] - (float)$t['hours'];
+    if ($extra > 0) $totalExtra += $extra;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

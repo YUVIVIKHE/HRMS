@@ -79,7 +79,15 @@ $stmt->execute([$uid]); $totalHrs = (float)$stmt->fetchColumn();
 $stmt2 = $db->prepare("SELECT COALESCE(SUM(tpl.hours_worked),0) FROM task_progress_logs tpl WHERE tpl.user_id=?");
 $stmt2->execute([$uid]); $trackedHrs = (float)$stmt2->fetchColumn();
 
-$extraConsumed = max(0, $trackedHrs - $totalHrs);
+// Extra consumed = sum of (worked - assigned) for each task where worked > assigned
+$extraStmt = $db->prepare("
+    SELECT COALESCE(SUM(extra),0) FROM (
+        SELECT GREATEST(0, COALESCE((SELECT SUM(tpl.hours_worked) FROM task_progress_logs tpl WHERE tpl.task_id = ta.id), 0) - ta.hours) AS extra
+        FROM task_assignments ta WHERE ta.assigned_to = ?
+    ) t
+");
+$extraStmt->execute([$uid]);
+$extraConsumed = (float)$extraStmt->fetchColumn();
 
 $stmtCnt = $db->prepare("SELECT COUNT(*) FROM task_assignments WHERE assigned_to=?");
 $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
