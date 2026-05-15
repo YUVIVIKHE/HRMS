@@ -503,10 +503,25 @@ function toggleGps(cb, containerId) {
 }
 
 function getMyLoc(latId, lngId) {
-  if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
+  if (!navigator.geolocation) { alert('Geolocation not supported by your browser.'); return; }
   navigator.geolocation.getCurrentPosition(
-    p => { document.getElementById(latId).value = p.coords.latitude.toFixed(7); document.getElementById(lngId).value = p.coords.longitude.toFixed(7); },
-    () => alert('Could not get location.')
+    p => {
+      document.getElementById(latId).value = p.coords.latitude.toFixed(7);
+      document.getElementById(lngId).value = p.coords.longitude.toFixed(7);
+      // Update map if available
+      if (typeof addMap !== 'undefined' && addMap && latId === 'add_lat') {
+        addMarker.setLatLng([p.coords.latitude, p.coords.longitude]);
+        addMap.setView([p.coords.latitude, p.coords.longitude], 16);
+      }
+    },
+    err => {
+      let msg = 'Could not get location. ';
+      if (err.code === 1) msg += 'Permission denied. Please allow location access in your browser settings.';
+      else if (err.code === 2) msg += 'Position unavailable. Make sure GPS/Location is enabled on your device.';
+      else if (err.code === 3) msg += 'Request timed out. Try again.';
+      alert(msg);
+    },
+    {enableHighAccuracy: true, timeout: 10000, maximumAge: 0}
   );
 }
 
