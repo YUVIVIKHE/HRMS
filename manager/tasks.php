@@ -94,6 +94,7 @@ $tasks = $tasks->fetchAll();
 $totalTasks = count($tasks);
 $totalAssigned = array_sum(array_column($tasks, 'hours'));
 $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
+$totalExtra    = max(0, $totalWorked - $totalAssigned);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -134,7 +135,7 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
     <?php endif; ?>
 
     <!-- Stats (top) -->
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--brand-light);color:var(--brand);">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -160,6 +161,15 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
         <div class="stat-body">
           <div class="stat-value"><?= number_format($totalWorked,1) ?></div>
           <div class="stat-label">Hrs Worked</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--red-bg);color:var(--red);">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value" style="color:var(--red);"><?= number_format($totalExtra,1) ?></div>
+          <div class="stat-label">Extra Consumed</div>
         </div>
       </div>
     </div>
@@ -241,8 +251,9 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
             $utilized = (float)$t['utilized_hours'];
             $assigned = (float)$t['hours'];
             $pct = $assigned > 0 ? min(100, round(($utilized/$assigned)*100)) : 0;
-            $barColor = $pct >= 100 ? 'var(--green)' : 'var(--blue)';
+            $barColor = $utilized > $assigned ? 'var(--red)' : ($pct >= 100 ? 'var(--green)' : 'var(--blue)');
             $isOverdue = $t['to_date'] < $today && $pct < 100;
+            $extraHrs = max(0, $utilized - $assigned);
           ?>
           <tr style="<?= $isOverdue?'background:#fff8f8;':'' ?>">
             <td>
@@ -263,7 +274,7 @@ $totalWorked   = array_sum(array_column($tasks, 'utilized_hours'));
             </td>
             <td class="text-sm text-muted"><?= date('d M', strtotime($t['from_date'])) ?> – <?= date('d M', strtotime($t['to_date'])) ?></td>
             <td style="text-align:center;font-weight:700;color:var(--brand);"><?= number_format($assigned,1) ?></td>
-            <td style="text-align:center;font-weight:700;color:var(--green-text);"><?= number_format($utilized,1) ?></td>
+            <td style="text-align:center;font-weight:700;color:<?= $utilized > $assigned ? 'var(--red)' : 'var(--green-text)' ?>;"><?= number_format($utilized,1) ?><?php if($extraHrs > 0): ?><div style="font-size:10px;color:var(--red);">+<?= number_format($extraHrs,1) ?> extra</div><?php endif; ?></td>
             <td style="min-width:100px;">
               <div style="display:flex;align-items:center;gap:5px;">
                 <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;">

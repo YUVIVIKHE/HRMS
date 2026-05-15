@@ -67,14 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
     }
 
     if (empty($errors)) {
-        // Budget check — exclude Sat, Sun, holidays, leaves
-        $hols = [];
-        try {
-            $hStmt = $db->prepare("SELECT holiday_date FROM holidays WHERE holiday_date BETWEEN ? AND ?");
-            $hStmt->execute([$fromDate, $toDate]);
-            $hols = array_flip($hStmt->fetchAll(PDO::FETCH_COLUMN));
-        } catch (Exception $e) {}
-
+        // Budget check — exclude only leaves from working days (allow holidays/weekends)
         $lvs = [];
         try {
             $lStmt = $db->prepare("SELECT from_date, to_date FROM leave_applications WHERE user_id=? AND status='approved' AND from_date<=? AND to_date>=?");
@@ -86,17 +79,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
             }
         } catch (Exception $e) {}
 
+        // Block if any date in range is a leave date
+        if (!empty($lvs)) {
+            $leaveDatesList = array_keys($lvs);
+            $errors[] = "Cannot assign tasks. Employee is on leave on: " . implode(', ', array_map(fn($d) => date('d M', strtotime($d)), $leaveDatesList));
+        }
+    }
+
+    if (empty($errors)) {
+        // Budget: count all days in range except leave days (weekends/holidays ARE counted for budget)
         $wDays = 0;
         $d = new DateTime($fromDate); $e = new DateTime($toDate);
         while ($d <= $e) {
-            $dow = (int)$d->format('N');
             $ds = $d->format('Y-m-d');
-            if ($dow < 6 && !isset($hols[$ds]) && !isset($lvs[$ds])) $wDays++;
+            if (!isset($lvs[$ds])) $wDays++;
             $d->modify('+1 day');
         }
 
         if ($wDays === 0) {
-            $errors[] = "No working days in selected range (all weekends/holidays/leaves).";
+            $errors[] = "No available days in selected range (all on leave).";
         } else {
             $maxHrs = $wDays * 9;
 
@@ -107,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
             $newHrs = array_sum(array_column($validTasks, 'hours'));
 
             if (($alreadyAssigned + $newHrs) > $maxHrs) {
-                $errors[] = "Exceeds budget! Max: {$maxHrs} hrs ({$wDays} working days). Already assigned: " . number_format($alreadyAssigned,1) . " hrs. New: " . number_format($newHrs,1) . " hrs.";
+                $errors[] = "Exceeds budget! Max: {$maxHrs} hrs ({$wDays} days). Already assigned: " . number_format($alreadyAssigned,1) . " hrs. New: " . number_format($newHrs,1) . " hrs.";
             }
         }
     }
@@ -381,10 +382,9 @@ function getBudget(){
   if(!f||!t||f>t) return 0;
   let d=new Date(f),e=new Date(t),n=0;
   while(d<=e){
-    const dow=d.getDay();
     const ds=d.toISOString().split('T')[0];
-    // Exclude Sat, Sun, holidays, leaves
-    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) n++;
+    // Count all days except leave days (weekends/holidays ARE allowed)
+    if(!empLeaves[ds]) n++;
     d.setDate(d.getDate()+1);
   }
   return n*9;
@@ -406,15 +406,14 @@ function onDatesChange(){
 function hasBusyDates(){
   const f=document.getElementById('fromDate').value, t=document.getElementById('toDate').value;
   if(!f||!t||f>t) return false;
-  // Check if there are zero working days
-  let d=new Date(f),e=new Date(t),workDays=0;
+  // Only block if there are leave dates in range
+  let d=new Date(f),e=new Date(t);
   while(d<=e){
-    const dow=d.getDay();
     const ds=d.toISOString().split('T')[0];
-    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) workDays++;
+    if(empLeaves[ds]) return true;
     d.setDate(d.getDate()+1);
   }
-  return workDays===0;
+  return false;
 }
 
 function checkBusy(){
@@ -422,58 +421,21 @@ function checkBusy(){
   const warn=document.getElementById('busyWarning');
   if(!f||!t||f>t){warn.style.display='none';return;}
 
-  let busyDates=[], reasons=[];
+  // Only block on LEAVE dates (not holidays/weekends)
+  let leaveDates=[];
   let d=new Date(f),e=new Date(t);
   while(d<=e){
-    const dow=d.getDay(); // 0=Sun,6=Sat
     const ds=d.toISOString().split('T')[0];
-
-    if(dow===0||dow===6){
-      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}));
-      reasons.push(dow===6?'Sat':'Sun');
-    } else if(empHolidays[ds]){
-      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Holiday)');
-    } else if(empLeaves[ds]){
-      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Leave)');
-    } else if(empData[ds]&&empData[ds].total_hrs>=9){
-      busyDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Full 9h)');
+    if(empLeaves[ds]){
+      leaveDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' ('+empLeaves[ds]+')');
     }
     d.setDate(d.getDate()+1);
   }
 
-  // Check if ALL days in range are blocked
-  let workingDaysInRange=0;
-  d=new Date(f); e=new Date(t);
-  while(d<=e){
-    const dow=d.getDay();
-    const ds=d.toISOString().split('T')[0];
-    if(dow!==0&&dow!==6&&!empHolidays[ds]&&!empLeaves[ds]) workingDaysInRange++;
-    d.setDate(d.getDate()+1);
-  }
-
-  // Only show warning for holidays/leaves/full days (weekends are expected)
-  let blockingDates=[];
-  d=new Date(f); e=new Date(t);
-  while(d<=e){
-    const dow=d.getDay();
-    const ds=d.toISOString().split('T')[0];
-    if(dow!==0&&dow!==6){
-      if(empHolidays[ds]) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' 🎉 '+empHolidays[ds]);
-      else if(empLeaves[ds]) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' 🏖 '+empLeaves[ds]);
-      else if(empData[ds]&&empData[ds].total_hrs>=9) blockingDates.push(d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+' (Full)');
-    }
-    d.setDate(d.getDate()+1);
-  }
-
-  if(workingDaysInRange===0){
-    warn.innerHTML='⚠ No working days in selected range (all weekends/holidays/leaves).';
+  if(leaveDates.length>0){
+    warn.innerHTML='⚠ Employee is on leave: <strong>'+leaveDates.join(', ')+'</strong>. Cannot assign tasks on leave dates.';
     warn.style.display='block';
     document.getElementById('btnSubmit').disabled=true;
-  } else if(blockingDates.length>0){
-    warn.innerHTML='⚠ Blocked dates: <strong>'+blockingDates.join(', ')+'</strong>. Hours will be distributed only on available working days.';
-    warn.style.display='block';
-    // Don't disable — just warn. Budget recalculates based on actual working days.
-    reCalc();
   } else {
     warn.style.display='none';
     reCalc();

@@ -206,13 +206,19 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;min-width:150px;">
               <div style="font-size:12px;color:var(--muted);">
-                <span style="font-weight:800;color:var(--green-text);font-size:16px;"><?= number_format($utilized,1) ?></span>
+                <span style="font-weight:800;color:<?= $utilized > $assigned ? 'var(--red)' : 'var(--green-text)' ?>;font-size:16px;"><?= number_format($utilized,1) ?></span>
                 <span>/ <?= number_format($assigned,1) ?> hrs</span>
               </div>
               <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;width:140px;">
-                <div style="height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:3px;"></div>
+                <div style="height:100%;width:<?= $pct ?>%;background:<?= $utilized > $assigned ? 'var(--red)' : $barColor ?>;border-radius:3px;"></div>
               </div>
-              <div style="font-size:11px;color:var(--muted);"><?= $pct ?>% done</div>
+              <div style="font-size:11px;color:<?= $utilized > $assigned ? 'var(--red)' : 'var(--muted)' ?>;">
+                <?php if($utilized > $assigned): ?>
+                  <?= $pct ?>% · +<?= number_format($utilized - $assigned, 1) ?> hrs extra
+                <?php else: ?>
+                  <?= $pct ?>% done
+                <?php endif; ?>
+              </div>
             </div>
           </div>
           <!-- Update Hours & Progress -->
@@ -222,7 +228,7 @@ $stmtCnt->execute([$uid]); $totalTasks = (int)$stmtCnt->fetchColumn();
             <input type="hidden" name="task_id" value="<?= $t['id'] ?>">
             <div style="display:flex;align-items:center;gap:6px;">
               <label style="font-size:12px;font-weight:600;color:var(--muted);">Log Hrs:</label>
-              <input type="number" name="hours_worked" class="form-control" style="width:70px;font-size:12px;padding:6px 8px;text-align:center;" min="0.5" max="<?= $remaining ?>" step="0.5" placeholder="0" required>
+              <input type="number" name="hours_worked" class="form-control" style="width:70px;font-size:12px;padding:6px 8px;text-align:center;" min="0.5" step="0.5" placeholder="0" required>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
               <label style="font-size:12px;font-weight:600;color:var(--muted);">Status:</label>
