@@ -69,10 +69,6 @@ try { $__db = getDB(); $__ls = $__db->prepare("SELECT setting_value FROM app_set
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Attendance
       </a>
-      <a href="my_acl.php" class="<?= $mp==='my_acl.php'?'active':'' ?>">
-        <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
-        My ACL
-      </a>
       <a href="acl_requests.php" class="<?= $mp==='acl_requests.php'?'active':'' ?>">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
         ACL Requests
