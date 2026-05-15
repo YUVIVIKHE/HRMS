@@ -1,9 +1,16 @@
-<?php $ep = basename($_SERVER['PHP_SELF']); ?>
+<?php $ep = basename($_SERVER['PHP_SELF']);
+$_companyLogo = '';
+try { $__db = getDB(); $__ls = $__db->prepare("SELECT setting_value FROM app_settings WHERE setting_key='company_logo'"); $__ls->execute(); $_companyLogo = $__ls->fetchColumn() ?: ''; } catch (Exception $e) {}
+?>
 <aside class="sidebar">
   <div class="sidebar-logo">
+    <?php if($_companyLogo): ?>
+      <img src="../<?= htmlspecialchars($_companyLogo) ?>" alt="Logo" style="max-height:36px;max-width:140px;">
+    <?php else: ?>
     <div class="logo-mark" style="background:linear-gradient(135deg,#059669,#10b981);">
       <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     </div>
+    <?php endif; ?>
     <div class="logo-text"><strong>HRMS Portal</strong><span>My Workspace</span></div>
   </div>
 

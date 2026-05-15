@@ -40,6 +40,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_se
     foreach ($fields as $f) {
         saveSetting($db, $f, trim($_POST[$f] ?? ''));
     }
+
+    // Handle logo upload
+    if (isset($_FILES['company_logo']) && $_FILES['company_logo']['error'] === UPLOAD_ERR_OK) {
+        $allowed = ['image/png','image/jpeg','image/gif','image/svg+xml','image/webp'];
+        if (in_array($_FILES['company_logo']['type'], $allowed)) {
+            $ext = pathinfo($_FILES['company_logo']['name'], PATHINFO_EXTENSION);
+            $logoPath = '../assets/logo.' . $ext;
+            // Remove old logos
+            foreach (glob('../assets/logo.*') as $old) { if (is_file($old)) unlink($old); }
+            move_uploaded_file($_FILES['company_logo']['tmp_name'], $logoPath);
+            saveSetting($db, 'company_logo', 'assets/logo.' . $ext);
+        } else {
+            $_SESSION['flash_error'] = "Invalid image format. Use PNG, JPG, GIF, SVG, or WebP.";
+            header("Location: settings.php"); exit;
+        }
+    }
+
     $_SESSION['flash_success'] = "Settings saved.";
     header("Location: settings.php"); exit;
 }
@@ -48,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_se
 $settings = [];
 $keys = ['company_name','company_address','company_phone','company_email','company_website',
          'work_hours_per_day','work_start_time','late_threshold','ot_threshold_hours',
-         'currency_symbol','financial_year_start','payslip_note'];
+         'currency_symbol','financial_year_start','payslip_note','company_logo'];
 foreach ($keys as $k) { $settings[$k] = getSetting($db, $k); }
 
 // Defaults
@@ -80,13 +97,28 @@ if (!$settings['financial_year_start']) $settings['financial_year_start'] = 'Apr
     <?php if($successMsg): ?><div class="alert alert-success"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><?= htmlspecialchars($successMsg) ?></div><?php endif; ?>
     <?php if($errorMsg): ?><div class="alert alert-error"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><?= htmlspecialchars($errorMsg) ?></div><?php endif; ?>
 
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
       <input type="hidden" name="action" value="save_settings">
 
       <!-- Company Info -->
       <div class="card" style="margin-bottom:20px;">
         <div class="card-header"><h2>Company Information</h2></div>
         <div class="card-body">
+          <!-- Logo Upload -->
+          <div class="form-group" style="margin-bottom:20px;">
+            <label>Company Logo</label>
+            <div style="display:flex;align-items:center;gap:16px;">
+              <?php if($settings['company_logo']): ?>
+                <img src="../<?= htmlspecialchars($settings['company_logo']) ?>" alt="Logo" style="max-height:50px;max-width:200px;border:1px solid var(--border);border-radius:8px;padding:4px;">
+              <?php else: ?>
+                <div style="width:50px;height:50px;background:var(--surface-2);border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--muted);">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+              <?php endif; ?>
+              <input type="file" name="company_logo" accept="image/*" class="form-control" style="max-width:300px;">
+            </div>
+            <span style="font-size:11px;color:var(--muted);margin-top:4px;display:block;">PNG, JPG, SVG, or WebP. Recommended: 200×50px</span>
+          </div>
           <div class="form-grid">
             <div class="form-group"><label>Company Name</label><input type="text" name="company_name" class="form-control" value="<?= htmlspecialchars($settings['company_name']) ?>" placeholder="Your Company Name"></div>
             <div class="form-group"><label>Phone</label><input type="text" name="company_phone" class="form-control" value="<?= htmlspecialchars($settings['company_phone']) ?>" placeholder="+91 XXXXXXXXXX"></div>
