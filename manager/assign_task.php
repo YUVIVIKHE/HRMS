@@ -298,7 +298,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
         <!-- RIGHT: Calendar -->
         <div>
           <div class="card" style="position:sticky;top:80px;">
-            <div class="card-header" style="padding:12px 16px;"><h2 style="font-size:14px;">Employee Schedule</h2></div>
+            <div class="card-header" style="padding:12px 16px;"><h2 style="font-size:14px;">Employee Schedule</h2><p id="calEmpName" style="font-size:12px;color:var(--brand);font-weight:700;margin-top:2px;display:none;"></p></div>
             <div class="card-body" style="padding:12px;">
               <div id="calPlaceholder" style="text-align:center;padding:30px 10px;color:var(--muted);font-size:12.5px;">
                 Select an employee to view schedule.
@@ -482,8 +482,16 @@ function checkBusy(){
 
 // ── Employee change ──────────────────────────────────────────
 function onEmpChange(){
-  const v=document.getElementById('empSelect').value;
-  if(v){ loadCal(); } else {
+  const sel=document.getElementById('empSelect');
+  const v=sel.value;
+  const nameEl=document.getElementById('calEmpName');
+  if(v){
+    const empName=sel.options[sel.selectedIndex].text;
+    nameEl.textContent=empName;
+    nameEl.style.display='block';
+    loadCal();
+  } else {
+    nameEl.style.display='none';
     document.getElementById('calPlaceholder').style.display='block';
     document.getElementById('calContainer').style.display='none';
     empData={};
