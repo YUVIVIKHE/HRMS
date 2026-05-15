@@ -390,7 +390,6 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
               <input type="text" class="form-control" value="<?= val($emp,'employee_id') ?>" readonly style="background:var(--surface-2);color:var(--muted);cursor:not-allowed;">
               <span style="font-size:11.5px;color:var(--muted-light);margin-top:3px;">Auto-generated, cannot be changed</span>
             </div>
-            <div class="form-group"><label>User Code</label><input type="text" name="user_code" class="form-control" value="<?= val($emp,'user_code') ?>"></div>
             <div class="form-group"><label>Job Title</label><input type="text" name="job_title" class="form-control" value="<?= val($emp,'job_title') ?>"></div>
             <div class="form-group"><label>Department</label>
               <select name="department_id" class="form-control">

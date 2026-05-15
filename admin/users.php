@@ -36,7 +36,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'&&($_POST['action']??'')==='add_user'){
       $nextNum=$lastCode?(int)substr($lastCode,3)+1:1;
       $empId='EMP'.str_pad($nextNum,3,'0',STR_PAD_LEFT);
       
-      $db->prepare("INSERT IGNORE INTO employees(first_name,last_name,email,employee_id,user_code)VALUES(?,?,?,?,?)")->execute([$firstName,$lastName,$email,$empId,$empId]);
+      $db->prepare("INSERT IGNORE INTO employees(first_name,last_name,email,employee_id)VALUES(?,?,?,?)")->execute([$firstName,$lastName,$email,$empId]);
 
       // Send email
       try{
