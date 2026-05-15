@@ -88,8 +88,8 @@ $tot=0;$ct=[];foreach($catRows as $r){$ct[$r['category']]=(float)$r['total'];$to
 <a href="project_expenses.php" class="btn btn-ghost btn-sm">Reset</a>
 <a href="export_expenses.php?project_id=<?=$fp?>&category=<?=urlencode($fc)?>&date_from=<?=$ff?>&date_to=<?=$ft?>" class="btn btn-sm" style="margin-left:auto;background:var(--green-bg);color:var(--green-text);border:1px solid #a7f3d0;font-weight:700">Export</a></form>
 
-<div class="card" style="margin-bottom:16px;overflow:hidden;"><div class="card-header" style="padding:14px 20px;border-bottom:1px solid var(--border);"><h2 style="font-size:15px;">Expenses (<?=$totalRows?>)</h2></div>
-<div style="max-height:380px;overflow-y:auto;">
+<div class="card" style="margin-bottom:16px;display:flex;flex-direction:column;height:calc(100vh - 520px);min-height:250px;overflow:hidden;"><div class="card-header" style="padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0;"><h2 style="font-size:15px;">Expenses (<?=$totalRows?>)</h2></div>
+<div style="flex:1;overflow-y:auto;">
 <table><thead style="position:sticky;top:0;background:var(--surface);z-index:1;"><tr><th>Date</th><th>Project</th><th>Category</th><th>Description</th><th style="text-align:right">Amount</th><th style="width:60px"></th></tr></thead><tbody>
 <?php if(empty($expenses)):?><tr class="empty-row"><td colspan="6">No expenses.</td></tr>
 <?php else:foreach($expenses as $e):?>
