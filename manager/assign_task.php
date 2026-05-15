@@ -254,18 +254,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assig
             <div class="card-body" style="padding:16px 20px;">
 
               <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-                <select id="subtaskPicker" class="form-control" style="max-width:300px;font-size:12.5px;">
+                <select id="rolePicker" class="form-control" style="max-width:180px;font-size:12.5px;" onchange="updateSubtaskList()">
+                  <option value="">— Select Role —</option>
+                  <option value="design">Design Engineer</option>
+                  <option value="site">Site Engineer</option>
+                  <option value="custom">Office / Other</option>
+                </select>
+                <select id="subtaskPicker" class="form-control" style="max-width:250px;font-size:12.5px;display:none;">
                   <option value="">— Pick subtask —</option>
-                  <optgroup label="Design Engineer" id="optDesign">
-                  <?php foreach(SUBTASKS_DESIGN as $st): ?>
-                    <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
-                  <?php endforeach; ?>
-                  </optgroup>
-                  <optgroup label="Site Engineer" id="optSite">
-                  <?php foreach(SUBTASKS_SITE as $st): ?>
-                    <option value="<?= htmlspecialchars($st) ?>"><?= htmlspecialchars($st) ?></option>
-                  <?php endforeach; ?>
-                  </optgroup>
                 </select>
                 <input type="number" id="pickerHrs" class="form-control" min="0.5" step="0.5" placeholder="Hrs" style="width:80px;font-size:12.5px;font-weight:700;text-align:center;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="addFromPicker()">+ Add</button>
@@ -359,8 +355,11 @@ function addRow(name, hrs) {
   reCalc();
 }
 function addFromPicker(){
+  const role=document.getElementById('rolePicker').value;
   const s=document.getElementById('subtaskPicker');
   const h=document.getElementById('pickerHrs');
+  if(!role){alert('Select a role first.');return;}
+  if(role==='custom'){alert('Use "Add Custom" for office tasks.');return;}
   if(!s.value){alert('Pick a subtask first.');return;}
   if(!h.value||parseFloat(h.value)<=0){alert('Enter hours for this task.');return;}
   addRow(s.value, parseFloat(h.value));
@@ -456,43 +455,35 @@ function onEmpChange(){
   const nameEl=document.getElementById('calEmpName');
   if(v){
     const empName=sel.options[sel.selectedIndex].text;
-    const jobTitle=sel.options[sel.selectedIndex].dataset.job||'';
     nameEl.textContent=empName;
     nameEl.style.display='block';
     loadCal();
-    // Filter subtask dropdown based on job title
-    filterSubtasks(jobTitle);
   } else {
     nameEl.style.display='none';
     document.getElementById('calPlaceholder').style.display='block';
     document.getElementById('calContainer').style.display='none';
     empData={};
-    filterSubtasks('');
   }
 }
 
-function filterSubtasks(job) {
+const TASKS_DESIGN = <?= json_encode(SUBTASKS_DESIGN) ?>;
+const TASKS_SITE = <?= json_encode(SUBTASKS_SITE) ?>;
+
+function updateSubtaskList() {
+  const role = document.getElementById('rolePicker').value;
   const picker = document.getElementById('subtaskPicker');
-  const optDesign = document.getElementById('optDesign');
-  const optSite = document.getElementById('optSite');
-  if (!optDesign || !optSite) return;
+  picker.innerHTML = '<option value="">— Pick subtask —</option>';
 
-  // Show/hide optgroups based on job title
-  const isDesign = job.includes('design') || job.includes('engineer') && !job.includes('site');
-  const isSite = job.includes('site');
+  let tasks = [];
+  if (role === 'design') tasks = TASKS_DESIGN;
+  else if (role === 'site') tasks = TASKS_SITE;
 
-  if (isSite) {
-    optDesign.style.display = 'none';
-    optSite.style.display = '';
-  } else if (isDesign) {
-    optDesign.style.display = '';
-    optSite.style.display = 'none';
+  if (tasks.length > 0) {
+    tasks.forEach(t => { picker.innerHTML += '<option value="'+t+'">'+t+'</option>'; });
+    picker.style.display = '';
   } else {
-    // Office/other — show both (they'll use custom mostly)
-    optDesign.style.display = '';
-    optSite.style.display = '';
+    picker.style.display = 'none';
   }
-  picker.value = '';
 }
 
 // ── Calendar ─────────────────────────────────────────────────
