@@ -52,10 +52,17 @@ function val($emp, $key) { return htmlspecialchars($emp[$key] ?? ''); }
 
 // Custom fields
 $customCols = [];
+$customMeta = []; // col => {type, options, label, required}
 try {
-    $allCols = $db->query("SHOW COLUMNS FROM employees")->fetchAll(PDO::FETCH_COLUMN);
+    $allColsFull = $db->query("SHOW FULL COLUMNS FROM employees")->fetchAll(PDO::FETCH_ASSOC);
     $baseCols = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
-    $customCols = array_diff($allCols, $baseCols);
+    foreach ($allColsFull as $c) {
+        if (!in_array($c['Field'], $baseCols)) {
+            $customCols[] = $c['Field'];
+            $meta = json_decode($c['Comment'] ?? '{}', true) ?: [];
+            $customMeta[$c['Field']] = $meta;
+        }
+    }
 } catch (Exception $e) {}
 ?>
 <!DOCTYPE html>
@@ -144,17 +151,13 @@ try {
       <div class="card" style="margin-bottom:16px;"><div class="card-header"><h2>Additional Information</h2></div><div class="card-body">
         <div class="form-grid">
           <?php foreach($customCols as $col):
-            $label=ucwords(str_replace('_',' ',$col));
-            $meta = [];
-            try {
-                $colInfo = $db->query("SHOW FULL COLUMNS FROM employees WHERE Field='$col'")->fetch();
-                $meta = json_decode($colInfo['Comment'] ?? '{}', true) ?: [];
-            } catch(Exception $e) {}
+            $meta = $customMeta[$col] ?? [];
+            $label = $meta['label'] ?? ucwords(str_replace('_',' ',$col));
             $fieldType = $meta['type'] ?? 'text';
             $options = $meta['options'] ?? [];
           ?>
           <div class="form-group">
-            <label><?= $meta['label'] ?? $label ?></label>
+            <label><?= htmlspecialchars($label) ?></label>
             <?php if($fieldType === 'dropdown' && !empty($options)): ?>
               <select name="custom_<?=$col?>" class="form-control">
                 <option value="">Select…</option>
@@ -162,8 +165,24 @@ try {
                   <option value="<?=htmlspecialchars($opt)?>" <?=($emp[$col]??'')===$opt?'selected':''?>><?=htmlspecialchars($opt)?></option>
                 <?php endforeach; ?>
               </select>
+            <?php elseif($fieldType === 'yes_no'): ?>
+              <select name="custom_<?=$col?>" class="form-control">
+                <option value="">Select…</option>
+                <option value="Yes" <?=($emp[$col]??'')==='Yes'?'selected':''?>>Yes</option>
+                <option value="No" <?=($emp[$col]??'')==='No'?'selected':''?>>No</option>
+              </select>
             <?php elseif($fieldType === 'date'): ?>
               <input type="date" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
+            <?php elseif($fieldType === 'number'): ?>
+              <input type="number" name="custom_<?=$col?>" class="form-control" step="0.01" value="<?=val($emp,$col)?>">
+            <?php elseif($fieldType === 'email'): ?>
+              <input type="email" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
+            <?php elseif($fieldType === 'phone'): ?>
+              <input type="tel" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
+            <?php elseif($fieldType === 'textarea'): ?>
+              <textarea name="custom_<?=$col?>" class="form-control" rows="3"><?=val($emp,$col)?></textarea>
+            <?php elseif($fieldType === 'url'): ?>
+              <input type="url" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
             <?php else: ?>
               <input type="text" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
             <?php endif; ?>

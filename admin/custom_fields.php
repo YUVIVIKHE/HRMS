@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $label = trim($_POST['field_label']);
             $fieldName = preg_replace('/[^a-z0-9_]/','_',strtolower($label));
-            $fieldType = $_POST['field_type']==='date' ? 'DATE' : 'VARCHAR(255)';
+            $fieldType = $_POST['field_type']==='date' ? 'DATE' : ($_POST['field_type']==='number' ? 'DECIMAL(12,2)' : ($_POST['field_type']==='textarea' ? 'TEXT' : 'VARCHAR(255)'));
             $isRequired = isset($_POST['is_required']);
             $dropdownOptions = [];
             if ($_POST['field_type'] === 'dropdown' && !empty($_POST['dropdown_options'])) {
@@ -132,8 +132,14 @@ foreach ($allColumnsFull as $col) {
               <label>Field Type</label>
               <select name="field_type" id="fieldType" class="form-control" onchange="toggleDropdownOpts()">
                 <option value="text">Text</option>
+                <option value="number">Number</option>
                 <option value="date">Date</option>
+                <option value="email">Email</option>
+                <option value="phone">Phone</option>
+                <option value="textarea">Textarea (Long Text)</option>
                 <option value="dropdown">Dropdown</option>
+                <option value="yes_no">Yes / No</option>
+                <option value="url">URL / Link</option>
               </select>
             </div>
             <div class="form-group" id="dropdownOptsGroup" style="margin-bottom:16px;display:none;">
