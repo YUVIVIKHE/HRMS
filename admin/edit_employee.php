@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
         // All editable columns (excluding id, created_at)
         $allCols = $db->query("SHOW COLUMNS FROM employees")->fetchAll(PDO::FETCH_COLUMN);
-        $skip    = ['id', 'created_at'];
+        $skip    = ['id', 'created_at', 'acl_eligible'];
 
         $sets   = [];
         $params = [];
