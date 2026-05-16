@@ -188,8 +188,8 @@ function _ch($sec) { if (!$sec) return null; return floor($sec/3600).'h '.str_pa
           $att      = $attMap[$dateStr] ?? null;
           $status   = $att['status'] ?? null;
 
-          // Determine class — priority: today > holiday > attendance > absent > sunday
-          $cls = 'cc-future';
+          // Determine class — priority: today > holiday > weekend > birthday
+          $cls = 'cc-none';
           $tipLines = [];
 
           if ($isToday)  { $cls = 'cc-today'; $tipLines[] = '📅 Today'; }
@@ -199,28 +199,14 @@ function _ch($sec) { if (!$sec) return null; return floor($sec/3600).'h '.str_pa
               $tipLines[] = '🎉 '.$h['title'];
               if ($h['description']) $tipLines[] = $h['description'];
           }
-          if ($att && !$isHol && !$isToday) {
-              if ($status==='present')  $cls = 'cc-present';
-              elseif ($status==='late') $cls = 'cc-late';
-              elseif ($status==='remote') $cls = 'cc-remote';
-              elseif ($status==='absent') $cls = 'cc-absent';
-          }
-          if ($isPast && !$isSun && !$isHol && !$att && !$isToday) {
-              // Only mark absent if user has at least one attendance record
-              if (!empty($attMap)) $cls = 'cc-absent';
-              else $cls = 'cc-none';
-          }
-          if ($isSun && $cls === 'cc-future') $cls = 'cc-sunday';
+          if ($isSun && !$isToday) $cls = 'cc-sunday';
+          if ($dow === 6 && !$isToday && !$isHol) $cls = 'cc-sunday'; // Saturday also grey
+          if ($isFuture && !$isHol && !$isToday) $cls = 'cc-future';
+          if ($isBd) $tipLines[] = '🎂 Birthday';
 
-          // Tooltip lines for attendance
-          if ($att) {
-              $ci = _ct($att['clock_in']); $co = _ct($att['clock_out']); $wh = _ch($att['work_seconds']);
-              if ($ci) $tipLines[] = '⏰ In: '.$ci;
-              if ($co) $tipLines[] = '🚪 Out: '.$co;
-              if ($wh) $tipLines[] = '⏱ '.$wh;
-              if (!$ci && $status==='absent') $tipLines[] = '❌ Absent';
-          } elseif ($isPast && !$isSun && !$isHol) {
-              $tipLines[] = '❌ No record';
+          // Show leaves for this user
+          if ($att && !$isToday && !$isHol) {
+              // Don't show attendance status on dashboard — only holidays/birthdays/weekends
           }
 
           $tipHtml = '';
@@ -240,12 +226,9 @@ function _ch($sec) { if (!$sec) return null; return floor($sec/3600).'h '.str_pa
     <div class="cal-legend">
       <?php
       $leg = [
-          ['#dcfce7','#15803d','Present'],
-          ['#fee2e2','#dc2626','Absent'],
-          ['#fef3c7','#d97706','Late'],
-          ['#dbeafe','#2563eb','Remote'],
           ['#ede9fe','#7c3aed','Holiday'],
           ['#4f46e5','#fff','Today'],
+          ['#f1f5f9','#94a3b8','Weekend'],
       ];
       foreach ($leg as [$bg,$c,$l]):
       ?>
