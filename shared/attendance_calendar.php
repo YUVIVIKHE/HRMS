@@ -20,6 +20,14 @@ try {
     foreach ($acStmt->fetchAll() as $r) $acLogs[$r['log_date']] = $r;
 } catch (Exception $e) {}
 
+// Get employee's first attendance date (to avoid marking absent before they started)
+$acStartDate = null;
+try {
+    $firstLogStmt = $db->prepare("SELECT MIN(log_date) FROM attendance_logs WHERE user_id=?");
+    $firstLogStmt->execute([$uid]);
+    $acStartDate = $firstLogStmt->fetchColumn() ?: null;
+} catch (Exception $e) {}
+
 // Holidays
 $acHolidays = [];
 try {
@@ -74,7 +82,7 @@ $acBase = '?' . http_build_query($acParams) . (empty($acParams) ? '' : '&');
         elseif ($isHol) { $bg = '#fef3c7'; $border = '#fcd34d'; $color = '#92400e'; }
         elseif ($log && $log['work_seconds'] >= 32400) { $bg = '#d1fae5'; $border = '#a7f3d0'; $color = '#059669'; } // >=9h = green
         elseif ($log && $log['work_seconds'] > 0 && $log['work_seconds'] < 32400) { $bg = '#fce7f3'; $border = '#f9a8d4'; $color = '#be185d'; } // <9h = pink
-        elseif ($isPast && !$isSat && !$isSun && !$isHol) { $bg = '#fee2e2'; $border = '#fca5a5'; $color = '#dc2626'; } // absent = red
+        elseif ($isPast && !$isSat && !$isSun && !$isHol && $acStartDate && $ds >= $acStartDate) { $bg = '#fee2e2'; $border = '#fca5a5'; $color = '#dc2626'; } // absent = red (only after joining)
       ?>
         <div style="min-height:36px;background:<?=$bg?>;border:1px solid <?=$border?>;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:<?=$color?>;" title="<?=$ds?>">
           <?= $d ?>
