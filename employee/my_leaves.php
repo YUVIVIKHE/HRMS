@@ -14,7 +14,9 @@ unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 $aclEligible = 1;
 try {
     $aeStmt = $db->prepare("SELECT acl_eligible FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
-    $aeStmt->execute([$uid]); $aclEligible = (int)($aeStmt->fetchColumn() ?? 1);
+    $aeStmt->execute([$uid]);
+    $result = $aeStmt->fetchColumn();
+    $aclEligible = ($result !== false) ? (int)$result : 1;
 } catch (Exception $e) { $aclEligible = 1; }
 
 $aclTotalHrs = 0; $aclUsedDays = 0; $aclEarnedDays = 0; $aclAvailable = 0;

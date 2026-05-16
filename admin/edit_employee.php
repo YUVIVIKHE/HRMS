@@ -108,11 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sets[]   = "`exempt_from_tax` = ?";
             $params[] = 0;
         }
-        // acl_eligible checkbox
-        if (in_array('acl_eligible', $allCols)) {
-            $sets[]   = "`acl_eligible` = ?";
-            $params[] = isset($_POST['acl_eligible']) ? 1 : 0;
-        }
+        // acl_eligible checkbox — ensure column exists and save
+        try {
+            if (!in_array('acl_eligible', $allCols)) {
+                $db->exec("ALTER TABLE employees ADD COLUMN `acl_eligible` TINYINT(1) NOT NULL DEFAULT 1");
+            }
+            $aclVal = isset($_POST['acl_eligible']) ? 1 : 0;
+            $db->prepare("UPDATE employees SET acl_eligible=? WHERE id=?")->execute([$aclVal, $id]);
+        } catch (Exception $e) {}
 
         // ── Email uniqueness check (exclude current employee) ──
         $newEmail = strtolower(trim($_POST['email'] ?? ''));
@@ -419,7 +422,7 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
             <div class="form-group">
               <label>ACL Eligible</label>
               <div class="form-check" style="margin-top:6px;">
-                <input type="checkbox" name="acl_eligible" id="aclEligible" value="1" <?= ($emp['acl_eligible'] ?? 1) ? 'checked' : '' ?>>
+                <input type="checkbox" name="acl_eligible" id="aclEligible" value="1" <?= (isset($emp['acl_eligible']) ? (int)$emp['acl_eligible'] : 1) ? 'checked' : '' ?>>
                 <label for="aclEligible">Allow ACL (Compensatory Leave) for this employee</label>
               </div>
             </div>
