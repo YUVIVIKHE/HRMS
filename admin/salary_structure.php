@@ -58,6 +58,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
         }
     }
 
+    // Auto-calculate personal allowance
+    $conveyance = (float)($_POST['conveyance'] ?? 0);
+    $educationAllowance = (float)($_POST['education_allowance'] ?? 0);
+    $lta = (float)($_POST['lta'] ?? 0);
+    $medicalReimbursement = (float)($_POST['medical_reimbursement'] ?? 0);
+    $mobileInternet = (float)($_POST['mobile_internet'] ?? 0);
+    $personalAllowance = $conveyance + $educationAllowance + $lta + $medicalReimbursement + $mobileInternet;
+
     try {
         if ($salary) {
             $db->prepare("UPDATE salary_structures SET
@@ -68,10 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 epf_admin_rate=?, esi_employee_rate=?, esi_employer_rate=?, tax_regime=?, custom_deductions=?, custom_additions=?
                 WHERE id=?")->execute([
                 $gross, $basic, $hra,
-                (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
-                (float)($_POST['education_allowance'] ?? 0), (float)($_POST['lta'] ?? 0),
-                (float)($_POST['mediclaim_insurance'] ?? 0), (float)($_POST['medical_reimbursement'] ?? 0),
-                (float)($_POST['mobile_internet'] ?? 0), (float)($_POST['personal_allowance'] ?? 0),
+                0, $conveyance,
+                $educationAllowance, $lta,
+                0, $medicalReimbursement,
+                $mobileInternet, $personalAllowance,
                 (float)($_POST['bonus'] ?? 0), $incomeTax, 2500,
                 (float)($_POST['epf_employee_rate'] ?? 3.67), (float)($_POST['eps_employer_rate'] ?? 8.33),
                 (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
@@ -89,10 +97,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'save_sa
                 epf_admin_rate, esi_employee_rate, esi_employer_rate, tax_regime, custom_deductions, custom_additions)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
                 $userId, $emp['id'], $gross, $basic, $hra,
-                (float)($_POST['special_allowance'] ?? 0), (float)($_POST['conveyance'] ?? 0),
-                (float)($_POST['education_allowance'] ?? 0), (float)($_POST['lta'] ?? 0),
-                (float)($_POST['mediclaim_insurance'] ?? 0), (float)($_POST['medical_reimbursement'] ?? 0),
-                (float)($_POST['mobile_internet'] ?? 0), (float)($_POST['personal_allowance'] ?? 0),
+                0, $conveyance,
+                $educationAllowance, $lta,
+                0, $medicalReimbursement,
+                $mobileInternet, $personalAllowance,
                 (float)($_POST['bonus'] ?? 0), $incomeTax, 2500,
                 (float)($_POST['epf_employee_rate'] ?? 3.67), (float)($_POST['eps_employer_rate'] ?? 8.33),
                 (float)($_POST['edli_employer_rate'] ?? 0.50), (float)($_POST['epf_admin_rate'] ?? 0.50),
@@ -160,7 +168,8 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
     <?php if(!$isEdit && $salary): ?>
     <!-- VIEW MODE -->
     <?php
-      $totalEarnings = $s['basic_salary'] + $s['hra'] + $s['special_allowance'] + $s['conveyance'] + $s['education_allowance'] + $s['lta'] + $s['mediclaim_insurance'] + $s['medical_reimbursement'] + $s['mobile_internet'] + $s['personal_allowance'];
+      $personalAllowance = (float)$s['conveyance'] + (float)$s['education_allowance'] + (float)$s['lta'] + (float)$s['medical_reimbursement'] + (float)$s['mobile_internet'];
+      $totalEarnings = $s['basic_salary'] + $s['hra'] + $personalAllowance;
       $customAddTotal = 0; foreach ($customAdd as $ca) $customAddTotal += (float)$ca['amount'];
       $totalEarnings += $customAddTotal;
       $monthlyIT = round($s['income_tax_annual'] / 12, 2);
@@ -169,7 +178,6 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
       $monthlyESI = round(($s['basic_salary'] * $s['esi_employee_rate']) / 100, 2);
       $customTotal = 0; foreach ($customDed as $cd) $customTotal += (float)$cd['amount'];
       $totalDeductions = $monthlyIT + $monthlyPT + $monthlyEPF + $monthlyESI + $customTotal;
-      // Employer contributions
       $empEPS = round(($s['basic_salary'] * $s['eps_employer_rate']) / 100, 2);
       $empEDLI = round(($s['basic_salary'] * $s['edli_employer_rate']) / 100, 2);
       $empAdmin = round(($s['basic_salary'] * $s['epf_admin_rate']) / 100, 2);
@@ -193,14 +201,12 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
           <tr><td style="padding:7px 0;color:var(--muted);">Gross (Annual)</td><td style="text-align:right;font-weight:700;color:var(--brand);">₹<?= number_format($s['gross_salary'],0) ?></td></tr>
           <tr><td style="padding:7px 0;color:var(--muted);">Basic Salary</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['basic_salary'],0) ?></td></tr>
           <tr><td style="padding:7px 0;color:var(--muted);">HRA</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['hra'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Special Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['special_allowance'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Conveyance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['conveyance'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Education Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['education_allowance'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">LTA</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['lta'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Mediclaim</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['mediclaim_insurance'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Medical Reimb.</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['medical_reimbursement'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Mobile & Internet</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['mobile_internet'],0) ?></td></tr>
-          <tr><td style="padding:7px 0;color:var(--muted);">Personal Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['personal_allowance'],0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);">Personal Allowance</td><td style="text-align:right;font-weight:700;">₹<?= number_format($personalAllowance,0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);font-size:11px;padding-left:16px;">— Conveyance</td><td style="text-align:right;font-size:11px;color:var(--muted);">₹<?= number_format($s['conveyance'],0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);font-size:11px;padding-left:16px;">— Education Allowance</td><td style="text-align:right;font-size:11px;color:var(--muted);">₹<?= number_format($s['education_allowance'],0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);font-size:11px;padding-left:16px;">— LTA</td><td style="text-align:right;font-size:11px;color:var(--muted);">₹<?= number_format($s['lta'],0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);font-size:11px;padding-left:16px;">— Medical Reimbursement</td><td style="text-align:right;font-size:11px;color:var(--muted);">₹<?= number_format($s['medical_reimbursement'],0) ?></td></tr>
+          <tr><td style="padding:7px 0;color:var(--muted);font-size:11px;padding-left:16px;">— Mobile & Internet</td><td style="text-align:right;font-size:11px;color:var(--muted);">₹<?= number_format($s['mobile_internet'],0) ?></td></tr>
           <tr><td style="padding:7px 0;color:var(--muted);">Bonus (Dec only)</td><td style="text-align:right;font-weight:700;">₹<?= number_format($s['bonus'],0) ?></td></tr>
           <?php foreach($customAdd as $ca): ?>
           <tr><td style="padding:7px 0;color:var(--muted);"><?= htmlspecialchars($ca['name']) ?></td><td style="text-align:right;font-weight:700;color:var(--green-text);">₹<?= number_format($ca['amount'],0) ?></td></tr>
@@ -265,14 +271,21 @@ $incomeTaxAnnual = (float)($s['income_tax_annual'] ?? calcIncomeTax($gross));
               <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Auto-calculated:</div>
               <div style="font-size:13px;">Monthly: ₹<strong id="dispMonthly">0</strong> · Basic: ₹<strong id="dispBasic">0</strong> · HRA: ₹<strong id="dispHRA">0</strong></div>
             </div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Special Allowance</label><input type="number" name="special_allowance" class="form-control" value="<?= $s['special_allowance'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Conveyance</label><input type="number" name="conveyance" class="form-control" value="<?= $s['conveyance'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Education Allowance</label><input type="number" name="education_allowance" class="form-control" value="<?= $s['education_allowance'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>LTA</label><input type="number" name="lta" class="form-control" value="<?= $s['lta'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Mediclaim Insurance</label><input type="number" name="mediclaim_insurance" class="form-control" value="<?= $s['mediclaim_insurance'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Medical Reimbursement</label><input type="number" name="medical_reimbursement" class="form-control" value="<?= $s['medical_reimbursement'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Mobile & Internet</label><input type="number" name="mobile_internet" class="form-control" value="<?= $s['mobile_internet'] ?? 0 ?>" min="0"></div>
-            <div class="form-group" style="margin-bottom:10px;"><label>Personal Allowance</label><input type="number" name="personal_allowance" class="form-control" value="<?= $s['personal_allowance'] ?? 0 ?>" min="0"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label>Conveyance</label><input type="number" name="conveyance" class="form-control paComp" value="<?= $s['conveyance'] ?? 0 ?>" min="0" oninput="calcAuto()"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label>Education Allowance</label><input type="number" name="education_allowance" class="form-control paComp" value="<?= $s['education_allowance'] ?? 0 ?>" min="0" oninput="calcAuto()"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label>LTA</label><input type="number" name="lta" class="form-control paComp" value="<?= $s['lta'] ?? 0 ?>" min="0" oninput="calcAuto()"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label>Medical Reimbursement</label><input type="number" name="medical_reimbursement" class="form-control paComp" value="<?= $s['medical_reimbursement'] ?? 0 ?>" min="0" oninput="calcAuto()"></div>
+            <div class="form-group" style="margin-bottom:10px;"><label>Mobile & Internet</label><input type="number" name="mobile_internet" class="form-control paComp" value="<?= $s['mobile_internet'] ?? 0 ?>" min="0" oninput="calcAuto()"></div>
+            <div style="background:var(--surface-2);border-radius:8px;padding:12px;margin:14px 0;">
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Personal Allowance (auto-calculated):</div>
+              <div style="font-size:14px;font-weight:700;color:var(--brand);">₹<span id="dispPA">0</span></div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">= Conveyance + Education + LTA + Medical Reimb. + Mobile & Internet</div>
+            </div>
+            <div style="background:var(--brand-light);border-radius:8px;padding:12px;margin-bottom:14px;border:1px solid var(--brand);">
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Total Earnings (Monthly):</div>
+              <div style="font-size:16px;font-weight:800;color:var(--brand);">₹<span id="dispTotalEarnings">0</span></div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">= Basic + HRA + Personal Allowance</div>
+            </div>
             <div class="form-group" style="margin-bottom:10px;"><label>Bonus (Yearly - Dec)</label><input type="number" name="bonus" class="form-control" value="<?= $s['bonus'] ?? 0 ?>" min="0"></div>
             <!-- Custom Additions -->
             <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px;">
@@ -358,6 +371,15 @@ function calcAuto() {
   document.getElementById('dispMonthly').textContent = Math.round(monthly).toLocaleString('en-IN');
   document.getElementById('dispBasic').textContent = Math.round(basic).toLocaleString('en-IN');
   document.getElementById('dispHRA').textContent = Math.round(hra).toLocaleString('en-IN');
+  // Personal Allowance = sum of sub-components
+  let pa = 0;
+  document.querySelectorAll('.paComp').forEach(el => { pa += parseFloat(el.value) || 0; });
+  const dispPA = document.getElementById('dispPA');
+  if(dispPA) dispPA.textContent = Math.round(pa).toLocaleString('en-IN');
+  // Total Earnings = Basic + HRA + Personal Allowance
+  const totalE = Math.round(basic) + Math.round(hra) + Math.round(pa);
+  const dispTE = document.getElementById('dispTotalEarnings');
+  if(dispTE) dispTE.textContent = Math.round(totalE).toLocaleString('en-IN');
   // Income tax
   let tax=0, t=gross;
   if(t>2400000){tax+=(t-2400000)*0.30;t=2400000;}
