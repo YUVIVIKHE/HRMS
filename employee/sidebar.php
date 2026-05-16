@@ -43,10 +43,15 @@ try { $__db = getDB(); $__ls = $__db->prepare("SELECT setting_value FROM app_set
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         Attendance
       </a>
-      <a href="my_acl.php" class="<?= $ep==='my_acl.php'?'active':'' ?>">
+      <?php
+      $_aclEligible = 1;
+      try { $__ae = $__db->prepare("SELECT acl_eligible FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?"); $__ae->execute([$_SESSION['user_id']]); $r=$__ae->fetchColumn(); $_aclEligible = ($r !== false) ? (int)$r : 1; } catch(Exception $e){}
+      if($_aclEligible): ?>
+      <a href="my_acl.php" class="<?= $ep==='my_acl.php'||$ep==='acl_request.php'?'active':'' ?>">
         <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
         My ACL
       </a>
+      <?php endif; ?>
     </nav>
   </div>
 
