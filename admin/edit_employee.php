@@ -108,6 +108,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sets[]   = "`exempt_from_tax` = ?";
             $params[] = 0;
         }
+        // acl_eligible checkbox
+        if (in_array('acl_eligible', $allCols)) {
+            $sets[]   = "`acl_eligible` = ?";
+            $params[] = isset($_POST['acl_eligible']) ? 1 : 0;
+        }
 
         // ── Email uniqueness check (exclude current employee) ──
         $newEmail = strtolower(trim($_POST['email'] ?? ''));
@@ -410,6 +415,13 @@ function sel($emp, $key, $option) { return ($emp[$key] ?? '') == $option ? 'sele
                 <option value="active" <?= sel($emp,'status','active') ?>>Active</option>
                 <option value="inactive" <?= sel($emp,'status','inactive') ?>>Inactive</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label>ACL Eligible</label>
+              <div class="form-check" style="margin-top:6px;">
+                <input type="checkbox" name="acl_eligible" id="aclEligible" value="1" <?= ($emp['acl_eligible'] ?? 1) ? 'checked' : '' ?>>
+                <label for="aclEligible">Allow ACL (Compensatory Leave) for this employee</label>
+              </div>
             </div>
             <div class="form-group"><label>Date of Joining</label><input type="date" name="date_of_joining" class="form-control" value="<?= val($emp,'date_of_joining') ?>"></div>
             <div class="form-group"><label>Date of Confirmation</label><input type="date" name="date_of_confirmation" class="form-control" value="<?= val($emp,'date_of_confirmation') ?>"></div>

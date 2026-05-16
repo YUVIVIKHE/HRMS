@@ -205,6 +205,10 @@ if ($action === 'clock_out') {
     $short  = $workSec < 32400;
 
     // ── Auto ACL: If today is Saturday/Sunday/Holiday, auto-submit ACL request ──
+    // Only if employee is ACL eligible
+    $aclEligibleCheck = 1;
+    try { $aeC = $db->prepare("SELECT acl_eligible FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?"); $aeC->execute([$uid]); $aclEligibleCheck = (int)($aeC->fetchColumn() ?? 1); } catch(Exception $e) {}
+
     $todayDow = (int)date('N'); // 6=Sat, 7=Sun
     $isWeekend = ($todayDow === 6 || $todayDow === 7);
     $isHolidayToday = false;
@@ -214,7 +218,7 @@ if ($action === 'clock_out') {
         $isHolidayToday = (bool)$holChk->fetch();
     } catch (Exception $e) {}
 
-    if (($isWeekend || $isHolidayToday) && $workSec > 0) {
+    if ($aclEligibleCheck && ($isWeekend || $isHolidayToday) && $workSec > 0) {
         // Auto-create ACL request for weekend/holiday work (pending approval)
         $workHrsForACL = round($workSec / 3600, 2);
         $reason = $isWeekend ? 'Worked on weekend (' . date('l') . ')' : 'Worked on holiday';

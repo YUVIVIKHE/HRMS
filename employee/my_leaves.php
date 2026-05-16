@@ -10,13 +10,21 @@ $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
 // ── Calculate ACL balance early (needed for POST validation) ──
-$aclTotalHrs = 0;
-try { $ot = $db->prepare("SELECT COALESCE(SUM(work_seconds - 32400),0) FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)"); $ot->execute([$uid]); $aclTotalHrs += round((float)($ot->fetchColumn() ?: 0) / 3600, 2); } catch (Exception $e) {}
-try { $ar = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'"); $ar->execute([$uid]); $aclTotalHrs += (float)$ar->fetchColumn(); } catch (Exception $e) {}
-$aclUsedDays = 0;
-try { $au = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')"); $au->execute([$uid]); $aclUsedDays = (float)$au->fetchColumn(); } catch (Exception $e) {}
-$aclEarnedDays = round($aclTotalHrs / 9, 2);
-$aclAvailable = max(0, $aclEarnedDays - $aclUsedDays);
+// Check if employee is ACL eligible
+$aclEligible = 1;
+try {
+    $aeStmt = $db->prepare("SELECT acl_eligible FROM employees e JOIN users u ON e.email=u.email WHERE u.id=?");
+    $aeStmt->execute([$uid]); $aclEligible = (int)($aeStmt->fetchColumn() ?? 1);
+} catch (Exception $e) { $aclEligible = 1; }
+
+$aclTotalHrs = 0; $aclUsedDays = 0; $aclEarnedDays = 0; $aclAvailable = 0;
+if ($aclEligible) {
+    try { $ot = $db->prepare("SELECT COALESCE(SUM(work_seconds - 32400),0) FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)"); $ot->execute([$uid]); $aclTotalHrs += round((float)($ot->fetchColumn() ?: 0) / 3600, 2); } catch (Exception $e) {}
+    try { $ar = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'"); $ar->execute([$uid]); $aclTotalHrs += (float)$ar->fetchColumn(); } catch (Exception $e) {}
+    try { $au = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')"); $au->execute([$uid]); $aclUsedDays = (float)$au->fetchColumn(); } catch (Exception $e) {}
+    $aclEarnedDays = round($aclTotalHrs / 9, 2);
+    $aclAvailable = max(0, $aclEarnedDays - $aclUsedDays);
+}
 
 // ── POST: Apply leave ────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_leave') {
@@ -149,7 +157,8 @@ $applications = $applications->fetchAll();
 
     <!-- Leave Balance Cards -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
-      <!-- ACL Card -->
+      <!-- ACL Card (only if eligible) -->
+      <?php if($aclEligible): ?>
       <div class="card" style="padding:20px;border-color:#7c3aed;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <span style="width:10px;height:10px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></span>
@@ -170,6 +179,7 @@ $applications = $applications->fetchAll();
           </div>
         </div>
       </div>
+      <?php endif; ?>
       <?php foreach($leaveTypes as $lt):
         $b = $balances[$lt['id']] ?? ['balance'=>0,'used'=>0];
         $total = $b['balance'] + $b['used'];
@@ -221,7 +231,7 @@ $applications = $applications->fetchAll();
               <label>Leave Type <span class="req">*</span></label>
               <select name="leave_type_id" id="applyType" class="form-control" required onchange="updateBalance()">
                 <option value="">Select type…</option>
-                <option value="9999" data-bal="<?= $aclAvailable ?>" style="font-weight:700;color:#7c3aed;">ACL (<?= $aclAvailable ?> days available)</option>
+                <?php if($aclEligible): ?><option value="9999" data-bal="<?= $aclAvailable ?>" style="font-weight:700;color:#7c3aed;">ACL (<?= $aclAvailable ?> days available)</option><?php endif; ?>
                 <?php foreach($leaveTypes as $lt): ?>
                   <option value="<?= $lt['id'] ?>" data-balance="<?= $balances[$lt['id']]['balance'] ?? 0 ?>">
                     <?= htmlspecialchars($lt['name']) ?> (<?= number_format($balances[$lt['id']]['balance']??0,1) ?> days available)
