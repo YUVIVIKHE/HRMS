@@ -143,8 +143,31 @@ try {
       <?php if(!empty($customCols)):?>
       <div class="card" style="margin-bottom:16px;"><div class="card-header"><h2>Additional Information</h2></div><div class="card-body">
         <div class="form-grid">
-          <?php foreach($customCols as $col): $label=ucwords(str_replace('_',' ',$col));?>
-          <div class="form-group"><label><?=$label?></label><input type="text" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>"></div>
+          <?php foreach($customCols as $col):
+            $label=ucwords(str_replace('_',' ',$col));
+            $meta = [];
+            try {
+                $colInfo = $db->query("SHOW FULL COLUMNS FROM employees WHERE Field='$col'")->fetch();
+                $meta = json_decode($colInfo['Comment'] ?? '{}', true) ?: [];
+            } catch(Exception $e) {}
+            $fieldType = $meta['type'] ?? 'text';
+            $options = $meta['options'] ?? [];
+          ?>
+          <div class="form-group">
+            <label><?= $meta['label'] ?? $label ?></label>
+            <?php if($fieldType === 'dropdown' && !empty($options)): ?>
+              <select name="custom_<?=$col?>" class="form-control">
+                <option value="">Select…</option>
+                <?php foreach($options as $opt): ?>
+                  <option value="<?=htmlspecialchars($opt)?>" <?=($emp[$col]??'')===$opt?'selected':''?>><?=htmlspecialchars($opt)?></option>
+                <?php endforeach; ?>
+              </select>
+            <?php elseif($fieldType === 'date'): ?>
+              <input type="date" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
+            <?php else: ?>
+              <input type="text" name="custom_<?=$col?>" class="form-control" value="<?=val($emp,$col)?>">
+            <?php endif; ?>
+          </div>
           <?php endforeach;?>
         </div>
       </div></div>

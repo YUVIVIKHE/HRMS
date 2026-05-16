@@ -21,10 +21,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $fieldName = preg_replace('/[^a-z0-9_]/','_',strtolower($label));
             $fieldType = $_POST['field_type']==='date' ? 'DATE' : 'VARCHAR(255)';
             $isRequired = isset($_POST['is_required']);
-            $meta = json_encode(['required'=>$isRequired,'label'=>$label]);
+            $dropdownOptions = [];
+            if ($_POST['field_type'] === 'dropdown' && !empty($_POST['dropdown_options'])) {
+                $dropdownOptions = array_filter(array_map('trim', explode("\n", $_POST['dropdown_options'])));
+                $fieldType = 'VARCHAR(255)';
+            }
+            $meta = json_encode(['required'=>$isRequired,'label'=>$label,'type'=>$_POST['field_type'],'options'=>$dropdownOptions]);
             $existingCols = array_column($allColumnsFull,'Field');
             if (!empty($fieldName) && !in_array($fieldName,$existingCols)) {
-                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL COMMENT '$meta'");
+                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL COMMENT '".addslashes($meta)."'");
                 $_SESSION['flash_success'] = "Custom field '$label' added.";
             } else { $_SESSION['flash_error'] = "Invalid name or field already exists."; }
         } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
@@ -125,10 +130,16 @@ foreach ($allColumnsFull as $col) {
             </div>
             <div class="form-group" style="margin-bottom:16px;">
               <label>Field Type</label>
-              <select name="field_type" class="form-control">
+              <select name="field_type" id="fieldType" class="form-control" onchange="toggleDropdownOpts()">
                 <option value="text">Text</option>
                 <option value="date">Date</option>
+                <option value="dropdown">Dropdown</option>
               </select>
+            </div>
+            <div class="form-group" id="dropdownOptsGroup" style="margin-bottom:16px;display:none;">
+              <label>Dropdown Options <span class="req">*</span></label>
+              <textarea name="dropdown_options" class="form-control" rows="4" placeholder="Enter one option per line&#10;e.g.&#10;Option 1&#10;Option 2&#10;Option 3"></textarea>
+              <span style="font-size:11px;color:var(--muted);">One option per line</span>
             </div>
             <div class="form-check" style="margin-bottom:20px;">
               <input type="checkbox" name="is_required" id="is_required">
@@ -232,6 +243,10 @@ function openEdit(field, label, required) {
 }
 function closeEdit() {
   document.getElementById('editModal').classList.remove('open');
+}
+function toggleDropdownOpts() {
+  const t = document.getElementById('fieldType').value;
+  document.getElementById('dropdownOptsGroup').style.display = t === 'dropdown' ? 'block' : 'none';
 }
 </script>
 </body>
