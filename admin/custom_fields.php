@@ -25,18 +25,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             elseif ($fType === 'number') $dbType = 'DECIMAL(12,2)';
             elseif ($fType === 'textarea') $dbType = 'TEXT';
 
-            $isRequired = isset($_POST['is_required']);
-            $dropdownOptions = [];
+            $isRequired = isset($_POST['is_required']) ? 1 : 0;
+            $dropdownOptions = '';
             if ($fType === 'dropdown' && !empty($_POST['dropdown_options'])) {
-                $dropdownOptions = array_filter(array_map('trim', explode("\n", $_POST['dropdown_options'])));
+                $dropdownOptions = trim($_POST['dropdown_options']);
             }
 
             $existingCols = array_column($allColumnsFull,'Field');
             if (!empty($fieldName) && !in_array($fieldName,$existingCols)) {
-                // Store meta as simple pipe-separated format in comment: type|label|opt1,opt2,opt3|required
-                $optStr = implode(',', $dropdownOptions);
-                $comment = $fType . '|' . $label . '|' . $optStr . '|' . ($isRequired ? '1' : '0');
-                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $dbType DEFAULT NULL COMMENT " . $db->quote($comment));
+                $db->exec("CREATE TABLE IF NOT EXISTS custom_field_meta (id INT AUTO_INCREMENT PRIMARY KEY, field_name VARCHAR(100) NOT NULL UNIQUE, field_type VARCHAR(30) NOT NULL DEFAULT 'text', field_label VARCHAR(200) NOT NULL, field_options TEXT NULL, is_required TINYINT(1) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $dbType DEFAULT NULL");
+                $db->prepare("INSERT INTO custom_field_meta (field_name, field_type, field_label, field_options, is_required) VALUES (?,?,?,?,?)")
+                   ->execute([$fieldName, $fType, $label, $dropdownOptions, $isRequired]);
                 $_SESSION['flash_success'] = "Custom field '$label' added.";
             } else { $_SESSION['flash_error'] = "Invalid name or field already exists."; }
         } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
@@ -47,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingCols = array_column($allColumnsFull,'Field');
             if (!in_array($fieldName,$baseColumns) && in_array($fieldName,$existingCols)) {
                 $db->exec("ALTER TABLE employees DROP COLUMN `$fieldName`");
+                $db->prepare("DELETE FROM custom_field_meta WHERE field_name=?")->execute([$fieldName]);
                 $_SESSION['flash_success'] = "Field deleted.";
             } else { $_SESSION['flash_error'] = "Cannot delete a core field."; }
         } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
@@ -68,18 +69,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $stmt = $db->query("SHOW FULL COLUMNS FROM employees");
 $allColumnsFull = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Ensure meta table
+try { $db->exec("CREATE TABLE IF NOT EXISTS custom_field_meta (id INT AUTO_INCREMENT PRIMARY KEY, field_name VARCHAR(100) NOT NULL UNIQUE, field_type VARCHAR(30) NOT NULL DEFAULT 'text', field_label VARCHAR(200) NOT NULL, field_options TEXT NULL, is_required TINYINT(1) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch(Exception $e){}
+
+// Load meta
+$metaMap = [];
+try { foreach($db->query("SELECT * FROM custom_field_meta")->fetchAll() as $m) $metaMap[$m['field_name']] = $m; } catch(Exception $e){}
+
 $customCols = [];
 foreach ($allColumnsFull as $col) {
     if (!in_array($col['Field'],$baseColumns)) {
-        $comment = $col['Comment'] ?? '';
-        // Parse: type|label|opt1,opt2,opt3|required
-        $parts = explode('|', $comment);
-        if (count($parts) >= 2) {
-            $meta = ['type'=>$parts[0], 'label'=>$parts[1], 'options'=>array_filter(explode(',', $parts[2] ?? '')), 'required'=>($parts[3] ?? '0')==='1'];
-        } else {
-            // Try JSON fallback for old fields
-            $meta = json_decode($comment, true) ?: ['required'=>false,'label'=>ucwords(str_replace('_',' ',$col['Field'])),'type'=>'text','options'=>[]];
-        }
+        $m = $metaMap[$col['Field']] ?? null;
+        $meta = $m ? ['required'=>(bool)$m['is_required'],'label'=>$m['field_label'],'type'=>$m['field_type'],'options'=>$m['field_options']] : ['required'=>false,'label'=>ucwords(str_replace('_',' ',$col['Field'])),'type'=>'text','options'=>''];
         $customCols[] = ['field'=>$col['Field'],'type'=>$col['Type'],'meta'=>$meta];
     }
 }

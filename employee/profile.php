@@ -52,22 +52,24 @@ function val($emp, $key) { return htmlspecialchars($emp[$key] ?? ''); }
 
 // Custom fields
 $customCols = [];
-$customMeta = []; // col => {type, options, label, required}
+$customMeta = [];
 try {
-    $allColsFull = $db->query("SHOW FULL COLUMNS FROM employees")->fetchAll(PDO::FETCH_ASSOC);
+    // Ensure meta table exists
+    $db->exec("CREATE TABLE IF NOT EXISTS custom_field_meta (id INT AUTO_INCREMENT PRIMARY KEY, field_name VARCHAR(100) NOT NULL UNIQUE, field_type VARCHAR(30) NOT NULL DEFAULT 'text', field_label VARCHAR(200) NOT NULL, field_options TEXT NULL, is_required TINYINT(1) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $allCols = $db->query("SHOW COLUMNS FROM employees")->fetchAll(PDO::FETCH_COLUMN);
     $baseCols = ['id','first_name','last_name','email','phone','job_title','date_of_birth','gender','marital_status','employee_id','department_id','employee_type','date_of_joining','date_of_exit','date_of_confirmation','direct_manager_name','location','base_location','user_code','address_line1','address_line2','city','state','zip_code','country','permanent_address_line1','permanent_address_line2','permanent_city','permanent_state','permanent_zip_code','account_type','account_number','ifsc_code','pan','aadhar_no','uan_number','pf_account_number','employee_provident_fund','professional_tax','esi_number','exempt_from_tax','passport_no','place_of_issue','passport_date_of_issue','passport_date_of_expiry','place_of_birth','nationality','blood_group','personal_email','emergency_contact_no','country_code_phone','status','created_at','gross_salary'];
-    foreach ($allColsFull as $c) {
-        if (!in_array($c['Field'], $baseCols)) {
-            $customCols[] = $c['Field'];
-            $comment = $c['Comment'] ?? '';
-            $parts = explode('|', $comment);
-            if (count($parts) >= 2) {
-                $meta = ['type'=>$parts[0], 'label'=>$parts[1], 'options'=>array_filter(explode(',', $parts[2] ?? '')), 'required'=>($parts[3] ?? '0')==='1'];
-            } else {
-                $meta = json_decode($comment, true) ?: ['type'=>'text','label'=>ucwords(str_replace('_',' ',$c['Field'])),'options'=>[]];
-            }
-            $customMeta[$c['Field']] = $meta;
-        }
+    $customCols = array_values(array_diff($allCols, $baseCols));
+
+    // Load metadata from table
+    $metaRows = $db->query("SELECT * FROM custom_field_meta")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($metaRows as $m) {
+        $customMeta[$m['field_name']] = [
+            'type' => $m['field_type'],
+            'label' => $m['field_label'],
+            'options' => array_filter(explode("\n", $m['field_options'] ?? '')),
+            'required' => (bool)$m['is_required'],
+        ];
     }
 } catch (Exception $e) {}
 ?>
