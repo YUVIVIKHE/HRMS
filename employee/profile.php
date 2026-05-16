@@ -59,7 +59,13 @@ try {
     foreach ($allColsFull as $c) {
         if (!in_array($c['Field'], $baseCols)) {
             $customCols[] = $c['Field'];
-            $meta = json_decode($c['Comment'] ?? '{}', true) ?: [];
+            $comment = $c['Comment'] ?? '';
+            $parts = explode('|', $comment);
+            if (count($parts) >= 2) {
+                $meta = ['type'=>$parts[0], 'label'=>$parts[1], 'options'=>array_filter(explode(',', $parts[2] ?? '')), 'required'=>($parts[3] ?? '0')==='1'];
+            } else {
+                $meta = json_decode($comment, true) ?: ['type'=>'text','label'=>ucwords(str_replace('_',' ',$c['Field'])),'options'=>[]];
+            }
             $customMeta[$c['Field']] = $meta;
         }
     }

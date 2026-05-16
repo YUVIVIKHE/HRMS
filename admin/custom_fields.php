@@ -19,17 +19,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $label = trim($_POST['field_label']);
             $fieldName = preg_replace('/[^a-z0-9_]/','_',strtolower($label));
-            $fieldType = $_POST['field_type']==='date' ? 'DATE' : ($_POST['field_type']==='number' ? 'DECIMAL(12,2)' : ($_POST['field_type']==='textarea' ? 'TEXT' : 'VARCHAR(255)'));
+            $fType = $_POST['field_type'] ?? 'text';
+            $dbType = 'VARCHAR(255)';
+            if ($fType === 'date') $dbType = 'DATE';
+            elseif ($fType === 'number') $dbType = 'DECIMAL(12,2)';
+            elseif ($fType === 'textarea') $dbType = 'TEXT';
+
             $isRequired = isset($_POST['is_required']);
             $dropdownOptions = [];
-            if ($_POST['field_type'] === 'dropdown' && !empty($_POST['dropdown_options'])) {
+            if ($fType === 'dropdown' && !empty($_POST['dropdown_options'])) {
                 $dropdownOptions = array_filter(array_map('trim', explode("\n", $_POST['dropdown_options'])));
-                $fieldType = 'VARCHAR(255)';
             }
-            $meta = json_encode(['required'=>$isRequired,'label'=>$label,'type'=>$_POST['field_type'],'options'=>$dropdownOptions]);
+
             $existingCols = array_column($allColumnsFull,'Field');
             if (!empty($fieldName) && !in_array($fieldName,$existingCols)) {
-                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $fieldType DEFAULT NULL COMMENT '".addslashes($meta)."'");
+                // Store meta as simple pipe-separated format in comment: type|label|opt1,opt2,opt3|required
+                $optStr = implode(',', $dropdownOptions);
+                $comment = $fType . '|' . $label . '|' . $optStr . '|' . ($isRequired ? '1' : '0');
+                $db->exec("ALTER TABLE employees ADD COLUMN `$fieldName` $dbType DEFAULT NULL COMMENT " . $db->quote($comment));
                 $_SESSION['flash_success'] = "Custom field '$label' added.";
             } else { $_SESSION['flash_error'] = "Invalid name or field already exists."; }
         } catch (PDOException $e) { $_SESSION['flash_error'] = "Error: ".$e->getMessage(); }
@@ -64,7 +71,15 @@ $allColumnsFull = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $customCols = [];
 foreach ($allColumnsFull as $col) {
     if (!in_array($col['Field'],$baseColumns)) {
-        $meta = json_decode($col['Comment'],true) ?: ['required'=>false,'label'=>ucwords(str_replace('_',' ',$col['Field']))];
+        $comment = $col['Comment'] ?? '';
+        // Parse: type|label|opt1,opt2,opt3|required
+        $parts = explode('|', $comment);
+        if (count($parts) >= 2) {
+            $meta = ['type'=>$parts[0], 'label'=>$parts[1], 'options'=>array_filter(explode(',', $parts[2] ?? '')), 'required'=>($parts[3] ?? '0')==='1'];
+        } else {
+            // Try JSON fallback for old fields
+            $meta = json_decode($comment, true) ?: ['required'=>false,'label'=>ucwords(str_replace('_',' ',$col['Field'])),'type'=>'text','options'=>[]];
+        }
         $customCols[] = ['field'=>$col['Field'],'type'=>$col['Type'],'meta'=>$meta];
     }
 }
