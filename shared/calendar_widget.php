@@ -205,7 +205,11 @@ function _ch($sec) { if (!$sec) return null; return floor($sec/3600).'h '.str_pa
               elseif ($status==='remote') $cls = 'cc-remote';
               elseif ($status==='absent') $cls = 'cc-absent';
           }
-          if ($isPast && !$isSun && !$isHol && !$att && !$isToday) $cls = 'cc-absent';
+          if ($isPast && !$isSun && !$isHol && !$att && !$isToday) {
+              // Only mark absent if user has at least one attendance record
+              if (!empty($attMap)) $cls = 'cc-absent';
+              else $cls = 'cc-none';
+          }
           if ($isSun && $cls === 'cc-future') $cls = 'cc-sunday';
 
           // Tooltip lines for attendance
