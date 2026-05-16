@@ -9,6 +9,15 @@ $successMsg = $_SESSION['flash_success'] ?? '';
 $errorMsg   = $_SESSION['flash_error']   ?? '';
 unset($_SESSION['flash_success'], $_SESSION['flash_error']);
 
+// ── Calculate ACL balance early (needed for POST validation) ──
+$aclTotalHrs = 0;
+try { $ot = $db->prepare("SELECT COALESCE(SUM(work_seconds - 32400),0) FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)"); $ot->execute([$uid]); $aclTotalHrs += round((float)($ot->fetchColumn() ?: 0) / 3600, 2); } catch (Exception $e) {}
+try { $ar = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'"); $ar->execute([$uid]); $aclTotalHrs += (float)$ar->fetchColumn(); } catch (Exception $e) {}
+$aclUsedDays = 0;
+try { $au = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')"); $au->execute([$uid]); $aclUsedDays = (float)$au->fetchColumn(); } catch (Exception $e) {}
+$aclEarnedDays = round($aclTotalHrs / 9, 2);
+$aclAvailable = max(0, $aclEarnedDays - $aclUsedDays);
+
 // ── POST: Apply leave ────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'apply_leave') {
     $typeId   = (int)$_POST['leave_type_id'];
@@ -90,27 +99,6 @@ foreach ($leaveTypes as $lt) {
     $b->execute([$uid,$lt['id']]); $b = $b->fetch();
     $balances[$lt['id']] = ['balance' => (float)($b['balance']??0), 'used' => (float)($b['used']??0)];
 }
-
-// ACL Balance calculation
-$aclTotalHrs = 0;
-// OT on working days (>11 hrs)
-try {
-    $otLogs = $db->prepare("SELECT SUM(work_seconds - 32400) AS ot_sec FROM attendance_logs WHERE user_id=? AND work_seconds > 39600 AND DAYOFWEEK(log_date) NOT IN (1,7)");
-    $otLogs->execute([$uid]); $aclTotalHrs += round((float)($otLogs->fetchColumn() ?: 0) / 3600, 2);
-} catch (Exception $e) {}
-// Approved weekend/holiday ACL requests
-try {
-    $aclApproved = $db->prepare("SELECT COALESCE(SUM(hours),0) FROM acl_requests WHERE user_id=? AND status='approved'");
-    $aclApproved->execute([$uid]); $aclTotalHrs += (float)$aclApproved->fetchColumn();
-} catch (Exception $e) {}
-// ACL used (leaves taken as ACL type)
-$aclUsedDays = 0;
-try {
-    $aclUsed = $db->prepare("SELECT COALESCE(SUM(days),0) FROM leave_applications WHERE user_id=? AND leave_type_id=0 AND status IN ('approved','pending')");
-    $aclUsed->execute([$uid]); $aclUsedDays = (float)$aclUsed->fetchColumn();
-} catch (Exception $e) {}
-$aclEarnedDays = round($aclTotalHrs / 9, 2);
-$aclAvailable = max(0, $aclEarnedDays - $aclUsedDays);
 
 // Applications
 $applications = $db->prepare("

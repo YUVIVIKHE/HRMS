@@ -217,15 +217,15 @@ foreach ($leaveTypes as $lt) {
           </tr>
           <?php endforeach; endif; ?>
           <!-- ACL Row (system-managed, not editable) -->
-          <tr style="background:#f3e8ff;">
-            <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#7c3aed;"></span></td>
-            <td class="font-semibold" style="color:#7c3aed;">ACL (Compensatory Leave)</td>
+          <tr style="background:#faf5ff;">
+            <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#7c3aed;"></span> <span class="font-semibold" style="color:#7c3aed;">ACL (Compensatory Leave)</span></td>
             <td class="text-sm text-muted">Auto-calculated</td>
             <td class="text-sm text-muted">—</td>
             <td class="text-sm text-muted">—</td>
             <td class="text-sm text-muted">—</td>
+            <td class="text-sm text-muted">—</td>
             <td><span class="badge badge-green">Active</span></td>
-            <td><span style="font-size:11px;color:var(--muted);">System managed (Employee only)</span></td>
+            <td><span style="font-size:11px;color:#7c3aed;font-weight:500;">System managed (Employee only)</span></td>
           </tr>
         </tbody>
       </table>
